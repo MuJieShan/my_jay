@@ -1,0 +1,22 @@
+|s2-s1|*s2/s1
+{'dataset': 'mnli', 'model': 'bert-base-uncased', 'state': 'ft', 'batchsize': 64, 'epoch': 5, 'epoch0': 1, 'step': 0, 'learning_rate': 3e-05, 'target_ratio': 0.5, 'seed': 3404, 'prune_batchsize': 32, 'reg': 5e-08, 'weight_decay': 0.002, 'remain_loss': 1, 'shuffle': True, 'pruneFlag': 'up', 'method': 'el2n', 'optim': 'adamw_torch'}
+预先训练{'eval_loss': 0.4242224395275116, 'eval_accuracy': 0.8366785532348446, 'eval_runtime': 17.7236, 'eval_samples_per_second': 553.781, 'eval_steps_per_second': 8.689, 'epoch': 1.0}
+Positive ratio: 1.0000
+Negative ratio: 0.00000
+
+{'eval_loss': 0.7798036932945251, 'eval_accuracy': 0.8383087111563933, 'eval_runtime': 17.6204, 'eval_samples_per_second': 557.024, 'eval_steps_per_second': 8.74, 'epoch': 5.0}
+
+norm 0 is 0.0018723774701356888
+norm 1 is 0.00717848539352417
+Total training time: 8993.233721017838
+|s2-s1|*s2/s1
+{'dataset': 'mnli', 'model': 'bert-base-uncased', 'state': 'ft', 'batchsize': 64, 'epoch': 5, 'epoch0': 1, 'step': 0, 'learning_rate': 3e-05, 'target_ratio': 0.5, 'seed': 3404, 'prune_batchsize': 32, 'reg': 5e-08, 'weight_decay': 0.002, 'remain_loss': 1, 'shuffle': True, 'pruneFlag': 'down', 'method': 'el2n', 'optim': 'adamw_torch'}
+预先训练{'eval_loss': 0.4242224395275116, 'eval_accuracy': 0.8366785532348446, 'eval_runtime': 17.9821, 'eval_samples_per_second': 545.821, 'eval_steps_per_second': 8.564, 'epoch': 1.0}
+Positive ratio: 1.0000
+Negative ratio: 0.00000
+
+{'eval_loss': 0.452976256608963, 'eval_accuracy': 0.8315843097300051, 'eval_runtime': 17.7369, 'eval_samples_per_second': 553.367, 'eval_steps_per_second': 8.682, 'epoch': 5.0}
+
+norm 0 is 0.0018723774701356888
+norm 1 is 0.005938720889389515
+Total training time: 8898.761950492859

@@ -1,0 +1,7 @@
+datasets
+evaluate
+transformers==4.46.3
+easydict
+scikit-learn
+huggingface_hub
+accelerate>=0.26.0

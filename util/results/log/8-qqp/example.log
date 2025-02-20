@@ -1,0 +1,22 @@
+|s2-s1|*s2/s1
+{'dataset': 'qqp', 'model': 'bert-base-uncased', 'state': 'ft', 'batchsize': 64, 'epoch': 5, 'epoch0': 1, 'step': 0, 'learning_rate': 3e-05, 'target_ratio': 0.5, 'seed': 3404, 'prune_batchsize': 32, 'reg': 5e-08, 'weight_decay': 0.002, 'remain_loss': 1, 'shuffle': True, 'pruneFlag': 'up', 'method': 'el2n', 'optim': 'adamw_torch'}
+预先训练{'eval_loss': 0.23983220756053925, 'eval_accuracy': 0.8966608953747217, 'eval_f1': 0.8612973906115132, 'eval_runtime': 68.4302, 'eval_samples_per_second': 590.821, 'eval_steps_per_second': 9.236, 'epoch': 1.0}
+Positive ratio: 1.0000
+Negative ratio: 0.00000
+
+{'eval_loss': 0.43481048941612244, 'eval_accuracy': 0.9085580014840465, 'eval_f1': 0.8767625587519584, 'eval_runtime': 66.8693, 'eval_samples_per_second': 604.612, 'eval_steps_per_second': 9.451, 'epoch': 5.0}
+
+norm 0 is 0.001193801872432232
+norm 1 is 0.004960461403243244
+Total training time: 8881.10556101799
+|s2-s1|*s2/s1
+{'dataset': 'qqp', 'model': 'bert-base-uncased', 'state': 'ft', 'batchsize': 64, 'epoch': 5, 'epoch0': 1, 'step': 0, 'learning_rate': 3e-05, 'target_ratio': 0.5, 'seed': 3404, 'prune_batchsize': 32, 'reg': 5e-08, 'weight_decay': 0.002, 'remain_loss': 1, 'shuffle': True, 'pruneFlag': 'down', 'method': 'el2n', 'optim': 'adamw_torch'}
+预先训练{'eval_loss': 0.23983220756053925, 'eval_accuracy': 0.8966608953747217, 'eval_f1': 0.8612973906115132, 'eval_runtime': 66.6804, 'eval_samples_per_second': 606.325, 'eval_steps_per_second': 9.478, 'epoch': 1.0}
+Positive ratio: 1.0000
+Negative ratio: 0.00000
+
+{'eval_loss': 0.30453357100486755, 'eval_accuracy': 0.8914172644076181, 'eval_f1': 0.857763089683774, 'eval_runtime': 67.1302, 'eval_samples_per_second': 602.263, 'eval_steps_per_second': 9.415, 'epoch': 5.0}
+
+norm 0 is 0.001193801872432232
+norm 1 is 0.006828484940342605
+Total training time: 8766.160153627396
