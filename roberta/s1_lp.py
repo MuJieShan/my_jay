@@ -40,7 +40,6 @@ def main():
 
     #微调几个epoch
 
-
     loss_before = {}
     loss_after = {}
     loss_g_before = {}
@@ -126,10 +125,10 @@ def main():
     if 't5' in config.model:
         modelname = "t5"
     keys = sorted(loss_gap.keys())
-    result_array = [[loss_gap[key], loss_g_gap[key],logits_gap[key][0],logits_gap[key][1],logits_before[key][0].item(),logits_before[key][1].item(),logits_after[key][0].item(),logits_after[key][1].item()] for key in keys]
+    result_array = [[loss_gap[key], loss_g_gap[key],logits_gap[key][0],logits_gap[key][1],logits_before[key][0].item(),logits_before[key][1].item(),logits_after[key][0].item(),logits_after[key][1].item(),labels_before[key].item(),labels_after[key].item()] for key in keys]
 
     scores_file = f"s1_{modelname}_{config['dataset']}_{config['seed']}_{config['reg']}_{config['batchsize']}.csv"
-    df = pd.DataFrame(result_array, columns=["s1", "loss_gap","logit_gap0","logit_gap1","logit_before0","logit_before1","logit_after0","logit_after1"])
+    df = pd.DataFrame(result_array, columns=["s1", "loss_gap","logit_gap0","logit_gap1","logit_before0","logit_before1","logit_after0","logit_after1","labels_before","labels_after"])
     df.to_csv(scores_file, index=False)
 
     end_time = time.time()
