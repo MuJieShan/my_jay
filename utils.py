@@ -1828,7 +1828,6 @@ def  train_lp_loop(config, model, train_epoch_iterator,train_dataloader1,eval_ep
 
 
     loss_gap = [[] for _ in range(len(train_dataloader1))]
-    print(loss_gap,loss_gap[0])
     def loss_particles(model_lp,e,loss_gap):
         loss_g_before = {}
         iterator = iter(train_dataloader1)
