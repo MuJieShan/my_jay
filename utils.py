@@ -1902,7 +1902,7 @@ def  train_lp_loop(config, model, train_epoch_iterator,train_dataloader1,eval_ep
             with torch.no_grad():
                 for name, module in model.named_modules():
                     if isinstance(module, torch.nn.Linear):
-                        r = compress
+                        r = config.weight_decay
                         module.weight.grad += r * module.weight
 
             optimizer.step()
