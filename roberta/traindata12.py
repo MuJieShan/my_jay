@@ -1,5 +1,5 @@
 import torch
-from dataloader import get_dataloader,get_dataloader1
+from dataloader import *
 from model_loader import get_model_and_tokenizer
 from utils import *
 from customTrainer import *
@@ -35,7 +35,7 @@ def main():
     model2.to(next(model.parameters()).device)
     # Load DataLoader
     print(f"\nLoading data...")
-    train_dataloader, eval_dataset, trainset = get_dataloader1(task, model_checkpoint, tokenizer=tokenizer,shuffle=config.shuffle,batch_size=batch_size)
+    train_dataloader, eval_dataset, trainset = get_dataloader3(task, model_checkpoint, tokenizer=tokenizer,shuffle=config.shuffle,batch_size=batch_size)
     # data pruning
     compress = config.reg
     data_p = GLUEPruner(dataset=trainset, ratio=config.target_ratio,pruneFlag=config.pruneFlag)
