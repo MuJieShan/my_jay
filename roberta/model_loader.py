@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, AutoModelForSequenceClassification,BertTokenizer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification,BertTokenizer,BertForSequenceClassification
 
 def get_model_and_tokenizer(model_checkpoint,task_name,device):
     num_labels = 1 if task_name == "stsb" else 3 if "mnli" in task_name  else 2

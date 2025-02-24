@@ -21,6 +21,31 @@ from tqdm import tqdm
 import copy
 from dataPruner import *
 import operator
+
+def get_loss(model, inputs):
+    # layer_sums = 0
+    # for (name, module) in model.named_modules():
+    #     if (pruning.can_prune(module)):
+    #         layer_sum = torch.sum(module.weight.pow(2))  # 平方和
+    #         #         print(f'{count}:{layer_name}:{layer_sum}')
+    #         # r = 0
+    #         # r=4e-4
+    #         r = 5e-4
+    #         # r= reg[name]
+    #         layer_sums = layer_sums + 0.5 * r * layer_sum.item()
+    if "labels" in inputs:
+        labels = inputs.pop("labels")
+    if "idx" in inputs:
+        idx = inputs.pop("idx")
+    outputs = model(**inputs)
+    if isinstance(model.loss, torch.nn.MSELoss):
+        logits = outputs.logits.squeeze()
+        loss = model.loss(logits, labels)  # +layer_sums
+    else:
+        logits = outputs['logits']
+        loss = model.loss(logits, labels)  # +layer_sums
+
+    return loss
 def compute_loss(model, inputs):
     # layer_sums = 0
     # for (name, module) in model.named_modules():
@@ -1177,7 +1202,6 @@ def  train_ft_loop1(config, model, train_epoch_iterator,eval_epoch_iterator, opt
     weight_file = f"weight_ft_{config.dataset}_{config.reg}_{config.seed}.csv"
     df = pd.DataFrame(OneNormofweight)
     df.to_csv(weight_file, index=False)
-
 #数据剪枝
 def  train_ft_loop2(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log,trainset):
     """
@@ -1656,45 +1680,42 @@ def statistics_loss1(config, model, train_epoch_iterator,eval_epoch_iterator, op
         loss_gap_file = f"loss_gap{i}_{config.dataset}_{config.reg}_{config.seed}.csv"
         df = pd.DataFrame(loss_gap)
         df.to_csv(loss_gap_file, index=False)
-
-
-
-
-
 def init_config():
     gpus = torch.cuda.device_count()
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default=None)
-    parser.add_argument('--learning_rate', type=float, default=None)
-    parser.add_argument('--epoch0', type=int, default=None, help="Pre-penalty")
-    parser.add_argument('--epoch', type=int, default=None, help="Post-tuning")
+    parser.add_argument('--state', type=str, default="ft",help='choose one:[ft,unlabel,pm]')
+    parser.add_argument('--dataset', type=str, default="mrpc")
+    parser.add_argument('--model', type=str, default='bert-base-uncased')
+    parser.add_argument('--learning_rate', type=float, default=2e-5)
+    parser.add_argument('--epoch', type=int, default=1)
+    parser.add_argument('--epoch0', type=int, default=1)
     parser.add_argument('--step', type=int, default=0)
     parser.add_argument('--batchsize', type=int, default=None)
     parser.add_argument('--prune_batchsize', type=int, default=None)
     parser.add_argument('--target_ratio', type=float, default=None)
     parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--iter_num', type=int, default=None)
-    parser.add_argument('--alpha_1', type=float, default=None)
-    parser.add_argument('--alpha_2', type=float, default=None)
-    parser.add_argument('--pruning_algo', type=str, default=None,
-                        help='choose one:[SEVEN,PLATON,movement,soft_movement]')
-    parser.add_argument('--t_i', type=int, default=None)
-    parser.add_argument('--reg0', type=float, default=0.0)
-    parser.add_argument('--reg', type=float, default=0.0, help="Pre-penalty")
-    parser.add_argument('--reg_1', type=float, default=0.0)
-    parser.add_argument('--reg2', type=float, default=0.0, help="Post-tuning")
+    parser.add_argument('--reg', type=float, default=0.5, help="used the reg in state 'unlabel'")
+    parser.add_argument('--weight_decay', type=float, default=0.001, help="the coefficient of L2 penalty")
+    parser.add_argument('--remain_loss', type=int, default=0)
+    parser.add_argument('--shuffle', type=str, default="True")
+    parser.add_argument('--pruneFlag', type=str, default="up", help='choose one:[up,down]')
+    parser.add_argument('--method', type=str, default="el2n", help='choose one:["gradn", "el2n", "loss"]')
+    parser.add_argument('--optim', type=str, default="adamw_torch", help='choose one:["adamw_torch", "sgd", "lion_32bit"]')
     args = parser.parse_args()
-    base_config = {'dataset': "mrpc",
-                   'batchsize': 32, 'epoch0': 0,'epoch': 10,'step':0, 'learning_rate': 2e-5, 'target_ratio': 0.50,
-                   'seed': 3404, 'iter_num': 100, 'grad': 1, 'alpha_1': 0.8, 'alpha_2': 0.8,
-                   'prune_batchsize': 32, 't_i': 200, 'pruning_algo': 'SEVEN', 'reg0': 0.001,'reg': 0.05, 'reg_1': 0, 'reg2': 0.001}
+    base_config = {'dataset': "mrpc",'model': "bert-base-uncased",'state': "ft",
+                   'batchsize': 32, 'epoch': 10,'epoch0': 1,'step':0, 'learning_rate': 2e-5, 'target_ratio': 0.50,
+                   'seed': 3404, 'prune_batchsize': 32, 'reg': 0.05, 'weight_decay': 0.001, 'remain_loss': 0, 'shuffle': "True",'pruneFlag': "up",'method': "el2n",'optim': "adamw_torch"}
     config = edict(base_config)
     for key, value in vars(args).items():
         if value is not None:
             setattr(config, key, value)
-    if config.pruning_algo not in ['SEVEN', 'PLATON', 'movement', 'soft_movement']:
-        raise ValueError("Unsupported pruning_algo")
-
+    if config.state == 'pm':
+        config.weight_decay = 0.0
+        config.shuffle = "False"
+    if config.shuffle == "False":
+        config.shuffle = False
+    else:
+        config.shuffle = True
     return config
 def seed_torch(seed=3404):
     seed = int(seed)
@@ -1709,442 +1730,27 @@ def seed_torch(seed=3404):
     torch.backends.cudnn.enabled = True
 
 
-
-
-
-
-
-# 双模型，冻结剪枝权重的梯度，微调阶段对保留权重添加l2,预训练阶段对剪枝权重惩罚先大后小再大
-# def train_eval_loop2(config, model, model1, train_epoch_iterator, eval_epoch_iterator, optimizer, pruning, device, log,
-#                      mask_file):
-#     """
-#     双模型，冻结剪枝权重的梯度，微调阶段对保留权重添加l2,预训练阶段对剪枝权重惩罚先大后小再大
-#     """
-#     # !python train_bert.py --dataset mrpc --seed 404 --epoch0 20 --epoch 10 --reg 0.05 --reg2 0.001
-#     reg_history = []
-#     remain_history = []
-#     loss_history = []
-#     weight = []
-#     # Training Loop
-#     length = len(train_epoch_iterator)
-#     print('len:', length)
-#     l = length // 3
-#     metric_epoch = {}
-#     steps0 = config.epoch0
-#     steps = config.epoch
-#     iter_num = 0
-#     metric_epoch['loss'] = []
-#     if model.metric != None:
-#         metric_name = f"{model.metric.__class__.__name__}"
-#         metric_epoch[f"{model.metric.__class__.__name__}"] = []
-#     if model.metric_1 != None:
-#         metric_1_name = f"{model.metric_1.__class__.__name__}"
-#         metric_epoch[f"{model.metric_1.__class__.__name__}"] = []
-#     pruning.init_mask()
-#     pruning.initmask(mask_file)
-#     pruning.load_model_mask()
-#     print("掩码加载完毕")
-#
-#     compress = config.reg
-#     epoch_reg = 1 if config.dataset in ["stsb", "cola"] else 2
-#     left = length  * steps0 * 0.3
-#     right = length  * steps0 * 0.7
-#     for epoch in range(steps0):
-#         # if epoch <= epoch_reg * steps * 0.3 or epoch >= epoch_reg * steps * 0.7:
-#         #     compress = config.reg + 0.03
-#         # compress = config.reg
-#         w = 0
-#         for name, module in model.named_modules():
-#             if pruning.can_prune(module):
-#                 new_mask = pruning.masks[module]
-#                 # print(type(module.weight.grad),module.weight.grad)
-#                 w += module.weight[new_mask == 0].abs().sum().item()
-#                 break
-#         print(f'1 epoch before  pruned weight:{w}')
-#         totalreg = 0
-#         numreg = 0
-#         metric_batch = {}
-#         metric_batch_test = {}
-#         metric_batch['loss'] = []
-#         metric_batch_test['loss'] = []
-#
-#         if model.metric != None:
-#             metric_batch[f"{model.metric.__class__.__name__}"] = []
-#             metric_batch_test[f"{model.metric.__class__.__name__}"] = []
-#         if model.metric_1 != None:
-#             metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-#             metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
-#         iterator = iter(train_epoch_iterator)
-#         trange = range(len(train_epoch_iterator))
-#         iterator_eval = iter(eval_epoch_iterator)
-#         trange_eavl = range(len(eval_epoch_iterator))
-#         for step in trange:
-#             if iter_num <= left or iter_num >= right:
-#                 compress = config.reg + 0.03
-#
-#             inputs = prepare_inputs(next(iterator), device)
-#             model.train()
-#             model1.eval()
-#             optimizer.zero_grad()
-#             step_loss, logit, step_metric, step_metric_1, _ = compute_loss1(model, model1, inputs, pruning)
-#             # 惩罚项
-#             loss_history.append(step_loss.item())
-#             if iter_num >= config.t_i and iter_num < (config.t_i + config.iter_num) - 1:
-#                 if config.pruning_algo == 'soft_movement':
-#                     r = (pruning.keep_ratio) + (1 - pruning.keep_ratio) * (
-#                                 (1 - (iter_num - config.t_i + 1) / pruning.config.iter_num) ** (3))
-#                     reg = 0
-#                     num = 0
-#                     g = torch.autograd.grad(step_loss, [i.weight for i in pruning._prunable_modules()],
-#                                             create_graph=True)
-#                     pruning._param_gradients = dict()
-#                     for module, grad in zip(pruning._prunable_modules(), g):
-#                         pruning._param_gradients[module] = grad
-#                         reg += torch.norm(torch.sigmoid(grad * module.weight), 1)
-#                         num += grad.numel()
-#                     step_loss += (r * reg / torch.tensor(num))
-#
-#             step_loss.backward()
-#             # if epoch > 0:
-#             pruning.update_reg()
-#             reg = pruning.reg
-#             reg2 = pruning.reg2
-#             reg3 = pruning.reg3
-#             reg_history.append(reg.copy())
-#             remain_history.append(reg2.copy())
-#             weight.append(reg3)
-#
-#             # step_loss.backward(create_graph=True)
-#             # if epoch == steps-1 and step % 20 == 0:
-#             #     pruning.update_reg()
-#             #     reg_history.append(reg.copy())
-#             # 通过梯度实现L2惩罚
-#
-#             with torch.no_grad():
-#                 for name, module in model.named_modules():
-#                     if pruning.can_prune(module):
-#                         new_mask = pruning.masks[module]
-#
-#                         r = compress
-#                         module.weight.grad[new_mask == 0] += r * module.weight[new_mask == 0]
-#
-#             totalreg += sum(pruning.reg.values())
-#             numreg += len(pruning.reg)
-#             # print(pruning.reg)
-#             # l2_grad = reg * m.weight
-#             # if self.args.block_loss_grad:
-#             #     m.weight.grad = l2_grad
-#             # else:
-#             #     m.weight.grad += l2_grad
-#             optimizer.step()
-#             if pruning.lr_scheduler is not None:
-#                 pruning.lr_scheduler.step()
-#
-#             metric_batch['loss'].append(step_loss.item())
-#             if model.metric != None:
-#                 metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
-#             if model.metric_1 != None:
-#                 metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
-#
-#             if step % l == 0:
-#                 s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
-#                 if model.metric != None:
-#                     s += ','
-#                     s += (
-#                         f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
-#                 if model.metric_1 != None:
-#                     s += ','
-#                     s += (
-#                         f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
-#                 log.info(s)
-#             # if iter_num>=config.t_i and iter_num<(config.t_i+config.iter_num)-1 and 'movement' not in config.pruning_algo:
-#             # if iter_num >= config.t_i and iter_num < (config.t_i + config.iter_num) - 1:
-#             #     pruning.model_masks(iter_num=iter_num-config.t_i)
-#             #     if iter_num==config.t_i:
-#             #         pruning.log.info('------------pruning------------')
-#             #     if iter_num==(config.t_i+config.iter_num)-2:
-#             #         remain=0
-#             #         total=0
-#             #         for _, mask in pruning.masks.items():
-#             #             remain += mask.sum().item()
-#             #             total += mask.numel()
-#             #         pruning.log.info('------------pruning end,true remain ratio:'+str(remain/total)+'------------')
-#             iter_num += 1
-#         print(f"平均系数: {totalreg / numreg}")
-#         # w=0
-#         # g=0
-#         # for name, module in model.named_modules():
-#         #     if pruning.can_prune(module):
-#         #         new_mask = pruning.masks[module]
-#         #         # print(type(module.weight.grad),module.weight.grad)
-#         #         w += module.weight[new_mask==0].sum().item()
-#         #         g += module.weight.grad[new_mask==0].sum().item()
-#         #         break
-#         # print(f'1 epoch pruned weight:{w}')
-#         # print(f'pruned grad:{g}')
-#         # Eval Loop
-#         if config.dataset == 'stsb' or config.dataset == 'cola':
-#             trange = range(len(eval_epoch_iterator))
-#             iterator = iter(eval_epoch_iterator)
-#             with torch.no_grad():
-#
-#                 model.eval()
-#                 model.zero_grad()
-#                 if config.dataset == 'stsb':
-#                     ref = np.array([])
-#                     pre = np.array([])
-#                 else:
-#                     ref = np.array([], dtype=np.float64)
-#                     pre = np.array([], dtype=np.float64)
-#                 for step in trange:
-#                     inputs = prepare_inputs(next(iterator), device)
-#                     if "labels" in inputs:
-#                         labels = inputs.pop("labels")
-#                     outputs = model(**inputs)
-#                     if config.dataset == 'stsb':
-#                         predictions = outputs.logits.squeeze()
-#                     else:
-#                         predictions = outputs['logits']
-#                     if config.dataset == 'stsb':
-#                         ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-#                         pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
-#                     else:
-#                         for i in range(predictions.shape[0]):
-#                             pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
-#                         ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-#
-#                 if config.dataset == 'stsb':
-#                     log.info(str(glue_compute_metrics('sts-b', pre, ref)))
-#                 else:
-#                     log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
-#         else:
-#             with torch.no_grad():
-#                 for step in trange_eavl:
-#                     inputs = prepare_inputs(next(iterator_eval), device)
-#                     step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
-#                     metric_batch_test['loss'].append(step_loss.item())
-#                     if model.metric != None:
-#                         metric_batch_test[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
-#                     if model.metric_1 != None:
-#                         metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
-#                             list(step_metric_1.values())[0])
-#                     if step == len(eval_epoch_iterator) - 1:
-#                         log.info('test---')
-#                         s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
-#                         if model.metric != None:
-#                             s += ','
-#                             s += (
-#                                 f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
-#                         if model.metric_1 != None:
-#                             s += ','
-#                             s += (
-#                                 f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
-#                         log.info(s)
-#
-#     # pruning.load_model_mask()
-#
-#     for epoch in range(steps):
-#         w = 0
-#         for name, module in model.named_modules():
-#             if pruning.can_prune(module):
-#                 new_mask = pruning.masks[module]
-#                 # print(type(module.weight.grad),module.weight.grad)
-#                 w += module.weight[new_mask == 0].abs().sum().item()
-#                 break
-#         print(f'1 epoch before  pruned weight:{w}')
-#         totalreg = 0
-#         numreg = 0
-#         metric_batch = {}
-#         metric_batch_test = {}
-#         metric_batch['loss'] = []
-#         metric_batch_test['loss'] = []
-#
-#         if model.metric != None:
-#             metric_batch[f"{model.metric.__class__.__name__}"] = []
-#             metric_batch_test[f"{model.metric.__class__.__name__}"] = []
-#         if model.metric_1 != None:
-#             metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-#             metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
-#         iterator = iter(train_epoch_iterator)
-#         trange = range(len(train_epoch_iterator))
-#         iterator_eval = iter(eval_epoch_iterator)
-#         trange_eavl = range(len(eval_epoch_iterator))
-#         for step in trange:
-#             inputs = prepare_inputs(next(iterator), device)
-#             model.train()
-#             optimizer.zero_grad()
-#             step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs, pruning)
-#             # 惩罚项
-#             reg = pruning.reg
-#             reg2 = pruning.reg2
-#             reg3 = pruning.reg3
-#             loss_history.append(step_loss.item())
-#             if iter_num >= config.t_i and iter_num < (config.t_i + config.iter_num) - 1:
-#                 if config.pruning_algo == 'soft_movement':
-#                     r = (pruning.keep_ratio) + (1 - pruning.keep_ratio) * (
-#                                 (1 - (iter_num - config.t_i + 1) / pruning.config.iter_num) ** (3))
-#                     reg = 0
-#                     num = 0
-#                     g = torch.autograd.grad(step_loss, [i.weight for i in pruning._prunable_modules()],
-#                                             create_graph=True)
-#                     pruning._param_gradients = dict()
-#                     for module, grad in zip(pruning._prunable_modules(), g):
-#                         pruning._param_gradients[module] = grad
-#                         reg += torch.norm(torch.sigmoid(grad * module.weight), 1)
-#                         num += grad.numel()
-#                     step_loss += (r * reg / torch.tensor(num))
-#
-#             step_loss.backward()
-#             pruning.freeze_pruned_grad()
-#             pruning.update_reg()
-#             reg_history.append(reg.copy())
-#             remain_history.append(reg2.copy())
-#             weight.append(reg3)
-#             # for name, module in model.named_modules():
-#             #     if pruning.can_prune(module):
-#             #         print("2 epoch in pruned weight ", module.weight.data[pruning.masks[module] == 0].sum().item())
-#             #         print("2 epoch in pruned grad ", module.weight.grad[pruning.masks[module] == 0].sum().item())
-#             #         print("2 epoch in remain grad ", module.weight.grad[pruning.masks[module] == 1].sum().item())
-#             #         break
-#             #
-#             with torch.no_grad():
-#                 for name, module in model.named_modules():
-#                     if pruning.can_prune(module):
-#                         new_mask = pruning.masks[module]
-#                         r = config.reg2
-#                         module.weight.grad[new_mask == 1] += r * module.weight[new_mask == 1]
-#
-#             totalreg += sum(pruning.reg.values())
-#             numreg += len(pruning.reg)
-#             optimizer.step()
-#             if pruning.lr_scheduler is not None:
-#                 pruning.lr_scheduler.step()
-#
-#             metric_batch['loss'].append(step_loss.item())
-#             if model.metric != None:
-#                 metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
-#             if model.metric_1 != None:
-#                 metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
-#
-#             if step % l == 0:
-#                 s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
-#                 if model.metric != None:
-#                     s += ','
-#                     s += (
-#                         f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
-#                 if model.metric_1 != None:
-#                     s += ','
-#                     s += (
-#                         f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
-#                 log.info(s)
-#             iter_num += 1
-#         print(f"平均系数: {totalreg / numreg}")
-#         # w=0
-#         # g=0
-#         # for name, module in model.named_modules():
-#         #     if pruning.can_prune(module):
-#         #         new_mask = pruning.masks[module]
-#         #         w += module.weight[new_mask==0].sum().item()
-#         #         g += module.weight.grad[new_mask==0].sum().item()
-#         #         break
-#         # print(f'2 epoch pruned weight:{w}')
-#         # print(f'pruned grad:{g}')
-#         # Eval Loop
-#         if config.dataset == 'stsb' or config.dataset == 'cola':
-#             trange = range(len(eval_epoch_iterator))
-#             iterator = iter(eval_epoch_iterator)
-#             with torch.no_grad():
-#
-#                 model.eval()
-#                 model.zero_grad()
-#                 if config.dataset == 'stsb':
-#                     ref = np.array([])
-#                     pre = np.array([])
-#                 else:
-#                     ref = np.array([], dtype=np.float64)
-#                     pre = np.array([], dtype=np.float64)
-#                 for step in trange:
-#                     inputs = prepare_inputs(next(iterator), device)
-#                     if "labels" in inputs:
-#                         labels = inputs.pop("labels")
-#                     outputs = model(**inputs)
-#                     if config.dataset == 'stsb':
-#                         predictions = outputs.logits.squeeze()
-#                     else:
-#                         predictions = outputs['logits']
-#                     if config.dataset == 'stsb':
-#                         ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-#                         pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
-#                     else:
-#                         for i in range(predictions.shape[0]):
-#                             pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
-#                         ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-#
-#                 if config.dataset == 'stsb':
-#                     log.info(str(glue_compute_metrics('sts-b', pre, ref)))
-#                 else:
-#                     log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
-#         else:
-#             with torch.no_grad():
-#                 for step in trange_eavl:
-#                     inputs = prepare_inputs(next(iterator_eval), device)
-#                     step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
-#                     metric_batch_test['loss'].append(step_loss.item())
-#                     if model.metric != None:
-#                         metric_batch_test[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
-#                     if model.metric_1 != None:
-#                         metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
-#                             list(step_metric_1.values())[0])
-#                     if step == len(eval_epoch_iterator) - 1:
-#                         log.info('test---')
-#                         s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
-#                         if model.metric != None:
-#                             s += ','
-#                             s += (
-#                                 f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
-#                         if model.metric_1 != None:
-#                             s += ','
-#                             s += (
-#                                 f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
-#                         log.info(s)
-#     # if epoch > 0:
-#     reg_file = f"fp_pruned_{config.dataset}{config.reg}.csv"
-#     df = pd.DataFrame(reg_history)
-#     df.to_csv(reg_file, index=False)
-#     reg2_file = f"fp_remain_{config.dataset}{config.reg}.csv"
-#     df = pd.DataFrame(remain_history)
-#     df.to_csv(reg2_file, index=False)
-#     loss_file = f"fp_loss_{config.dataset}{config.reg}.csv"
-#     df = pd.DataFrame(loss_history)
-#     df.to_csv(loss_file, index=False)
-#     weight_file = f"fp_weight_{config.dataset}{config.reg}.csv"
-#     df = pd.DataFrame(weight)
-#     df.to_csv(weight_file, index=False)
-#     # reg_history = []
-# 先微调3epoch，再预训练：不加掩码对齐标签，冻结剪枝权重的梯度，直接压缩剪枝权重，再微调保留权重
-def train_eval_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, pruning, device, log,mask_file):
+#损失颗粒
+def  train_lp_loop(config, model, train_epoch_iterator,train_dataloader1,eval_epoch_iterator, optimizer, device, log):
     """
-    先微调3epoch
-    再预训练：不加掩码对齐标签，冻结剪枝权重的梯度，直接压缩剪枝权重
-    再微调保留权重
-    example : !python train_bert.py --dataset mrpc --seed 404 --epoch0 5 --reg 0.5 --reg_1 0.03 --epoch 10 --reg2 0.001
+    计算每个样本的损失颗粒
+    每个epoch统计一次
+    目的：观察是否真的存在颗粒裂解的情况
+    example : !python train.py --dataset mrpc --seed 3404 --epoch 10 --reg 0.001 --model bert-base-uncased --batchsize 32
     """
-    reg_history = []
-    remain_history = []
-    loss_history = []
-    weight = []#pruned weight
+    name1 = f"{model.metric.__class__.__name__}"
+    train_eval = {name1: []}
+    if model.metric_1 != None:
+        name2 = f'{model.metric_1.__class__.__name__}'
+        train_eval[name2] = []
     # Training Loop
     length = len(train_epoch_iterator)
     print('len:', length)
-    l = length // 3
+    l = length // 1
     metric_epoch = {}
-    steps = config.epoch0
+    steps = config.epoch
     iter_num = 0
     metric_epoch['loss'] = []
-
-    pruning.init_mask() #注册mask
-    pruning.initmask(mask_file) # pruning load mask
-    print("pruner掩码加载完毕")
     if model.metric != None:
         metric_name = f"{model.metric.__class__.__name__}"
         metric_epoch[f"{model.metric.__class__.__name__}"] = []
@@ -2152,9 +1758,6 @@ def train_eval_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, op
         metric_1_name = f"{model.metric_1.__class__.__name__}"
         metric_epoch[f"{model.metric_1.__class__.__name__}"] = []
     compress = config.reg
-    left = length * steps * 0.3
-    right = length * steps * 0.7
-
     # Eval Loop
     def eval_loop():
         metric_batch_test = {}
@@ -2223,10 +1826,59 @@ def train_eval_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, op
                                 f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
                         log.info(s)
 
-    print("初始微调")
-    for epoch in range(3):
-        totalreg = 0
-        numreg = 0
+
+    loss_gap = [[] for _ in range(len(train_dataloader1))]
+    print(loss_gap,loss_gap[0])
+    def loss_particles(model_lp,e,loss_gap):
+        loss_g_before = {}
+        iterator = iter(train_dataloader1)
+        trange = range(len(train_dataloader1))
+        before = tqdm(total=len(train_dataloader1), desc=f"lp before{e}")
+        for step in trange:
+            before.update(1)
+            inputs = prepare_inputs(next(iterator), device)
+            model_lp.eval()
+            step_idx = inputs["idx"]
+            loss= get_loss(model_lp, inputs)
+            for i in range(len(step_idx)):
+                loss_g_before[step_idx[i].item()] = loss.item()
+        before.close()
+
+        with torch.no_grad():
+            for name, module in model_lp.named_modules():
+                if isinstance(module, (torch.nn.Linear)):
+                    r = 1 - compress
+                    module.weight.data = r * module.weight.data
+
+        loss_g_after = {}
+        iterator = iter(train_dataloader1)
+        trange = range(len(train_dataloader1))
+        after = tqdm(total=len(train_dataloader1), desc=f"lp after{e}")
+        for step in trange:
+            after.update(1)
+            inputs = prepare_inputs(next(iterator), device)
+            model_lp.eval()
+            step_idx = inputs["idx"]
+            loss = get_loss(model_lp, inputs)
+            for i in range(len(step_idx)):
+                loss_g_after[step_idx[i].item()] = loss.item()
+        after.close()
+
+        keys = sorted(loss_g_before.keys())
+        loss_g_gap = {key: loss_g_after[key] - loss_g_before[key] for key in keys}
+        for key in keys:
+            loss_gap[key].append(loss_g_gap[key])
+        del model_lp
+        print(loss_gap)
+
+    model_checkpoint = config.model
+    task = config.dataset
+    for epoch in range(steps):
+        model_lp=load_model(model_checkpoint,task,device)
+        model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
+        model_lp.to(next(model.parameters()).device)
+        loss_particles(model_lp, epoch, loss_gap)
+        del model_lp
         metric_batch = {}
         metric_batch['loss'] = []
         if model.metric != None:
@@ -2235,31 +1887,25 @@ def train_eval_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, op
             metric_batch[f"{model.metric_1.__class__.__name__}"] = []
         iterator = iter(train_epoch_iterator)
         trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
+        training = tqdm(total=len(train_epoch_iterator), desc=f"training epoch{epoch}")
         for step in trange:
+            training.update(1)
             inputs = prepare_inputs(next(iterator), device)
             model.train()
             optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs, pruning)
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs)
             # 惩罚项
-            loss_history.append(step_loss.item())
-            if iter_num == 0:
-                print(f"iter_num{iter_num}:loss{step_loss.item()}")
             step_loss.backward()
+            train_eval[name1].append(step_metric)
+            if step_metric_1:
+                train_eval[name2].append(step_metric_1)
             with torch.no_grad():
                 for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = config.reg2
+                    if isinstance(module, torch.nn.Linear):
+                        r = compress
                         module.weight.grad += r * module.weight
 
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
             optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-
             metric_batch['loss'].append(step_loss.item())
             if model.metric != None:
                 metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
@@ -2279,1469 +1925,24 @@ def train_eval_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, op
                 log.info(s)
                 eval_loop()
             iter_num += 1
-        print(f"平均系数: {totalreg / numreg}")
-        print(f"初始微调epoch{epoch}")
-        eval_loop()
-
-    for epoch in range(steps):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'epoch {epoch} before pruned weight:{w}')
-
-        totalreg = 0
-        numreg = 0
-        metric_batch = {}
-        metric_batch['loss'] = []
-        if model.metric != None:
-            metric_batch[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
-        pruning.freeze_pruned_grad()
-        for step in trange:
-            if step < 3:
-                w = 0
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        # print(type(module.weight.grad),module.weight.grad)
-                        w += module.weight[new_mask == 0].abs().sum().item()
-                        break
-                print(f'step {step} pruned weight:{w}')
-            if iter_num <= left or iter_num >= right:
-                compress = config.reg + config.reg_1
-            inputs = prepare_inputs(next(iterator), device)
-            model.train()
-            optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs, pruning)
-            # 惩罚项
-            loss_history.append(step_loss.item())
-            if iter_num == 0:
-                print(f"iter_num{iter_num}:loss{step_loss.item()}")
-            step_loss.backward()
-            pruning.freeze_pruned_grad()
-            pruning.update_reg()
-            reg = pruning.reg
-            reg2 = pruning.reg2
-            reg3 = pruning.reg3
-            reg_history.append(reg.copy())
-            remain_history.append(reg2.copy())
-            weight.append(reg3)
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
-            optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = 1-compress
-                        module.weight[new_mask == 0] = r * module.weight[new_mask == 0]
-
-            metric_batch['loss'].append(step_loss.item())
-            if model.metric != None:
-                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
-            if model.metric_1 != None:
-                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
-
-            if step % l == 0:
-                s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
-                if model.metric != None:
-                    s += ','
-                    s += (
-                        f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
-                if model.metric_1 != None:
-                    s += ','
-                    s += (
-                        f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
-                log.info(s)
-                # eval_loop()
-            iter_num += 1
-        print(f"平均系数: {totalreg / numreg}")
-        print("*******剪枝权重置0前********")
-        eval_loop()
-
-    pruning.load_model_mask()
-    print("*******剪枝权重置0后*******")
-    eval_loop()
-    steps0 = config.epoch
-    compress0 = config.reg2
-    print("后续微调")
-    for epoch in range(steps0):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'epoch{epoch}before  pruned weight:{w}')
-
-        totalreg = 0
-        numreg = 0
-        metric_batch = {}
-        metric_batch['loss'] = []
-        if model.metric != None:
-            metric_batch[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
-        pruning.freeze_pruned_grad()
-        for step in trange:
-            inputs = prepare_inputs(next(iterator), device)
-            model.train()
-            optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs, pruning)
-            # 惩罚项
-            loss_history.append(step_loss.item())
-            if iter_num == 0:
-                print(f"iter_num{iter_num}:loss{step_loss.item()}")
-            step_loss.backward()
-            pruning.freeze_pruned_grad()
-            # if epoch > 0:
-            pruning.update_reg()
-            reg = pruning.reg
-            reg2 = pruning.reg2
-            reg3 = pruning.reg3
-            reg_history.append(reg.copy())
-            remain_history.append(reg2.copy())
-            weight.append(reg3)
-
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = compress0
-                        module.weight.grad[new_mask == 1] += r * module.weight[new_mask == 1]
-
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
-            optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-
-            metric_batch['loss'].append(step_loss.item())
-            if model.metric != None:
-                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
-            if model.metric_1 != None:
-                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
-
-            if step % l == 0:
-                s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
-                if model.metric != None:
-                    s += ','
-                    s += (
-                        f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
-                if model.metric_1 != None:
-                    s += ','
-                    s += (
-                        f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
-                log.info(s)
-                eval_loop()
-            iter_num += 1
-        print(f"平均系数: {totalreg / numreg}")
+        training.close()
         print(f"********微调epoch{epoch}********")
         eval_loop()
-# 预训练：不加掩码对齐标签，l2压缩剪枝权重(cubic schedule)，有微调,
-def train_eval_loop4(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, pruning, device, log,mask_file):
-    """
-    预训练：不加掩码对齐标签，l2压缩剪枝权重(cubic schedule)
-    有微调,
-    example : --epoch0 1 --reg 0.05 --reg_1 0.03 --epoch 2 --reg2 0.001
-    """
-    reg_history = []
-    remain_history = []
-    loss_history = []
-    weight = []
-    # Training Loop
-    length = len(train_epoch_iterator)
-    print('len:', length)
-    l = length // 3
-    steps = config.epoch0
-    iter_num = 0
-    pruning.init_mask() #注册mask
-    pruning.initmask(mask_file) # pruning load mask
-    print("pruner掩码加载完毕")
+    model_lp = load_model(model_checkpoint, task, device)
+    model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
+    model_lp.to(next(model.parameters()).device)
+    loss_particles(model_lp, steps, loss_gap)
+    del model_lp
 
-    compress = config.reg
-    # Eval Loop
-    def eval_loop():
-        metric_batch_test = {}
-        metric_batch_test['loss'] = []
-        if model.metric != None:
-            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
-        if config.dataset == 'stsb' or config.dataset == 'cola':
-            trange = range(len(eval_epoch_iterator))
-            iterator = iter(eval_epoch_iterator)
-            with torch.no_grad():
-                model.eval()
-                model.zero_grad()
-                if config.dataset == 'stsb':
-                    ref = np.array([])
-                    pre = np.array([])
-                else:
-                    ref = np.array([], dtype=np.float64)
-                    pre = np.array([], dtype=np.float64)
-                for step in trange:
-                    inputs = prepare_inputs(next(iterator), device)
-                    if "labels" in inputs:
-                        labels = inputs.pop("labels")
-                    outputs = model(**inputs)
-                    if config.dataset == 'stsb':
-                        predictions = outputs.logits.squeeze()
-                    else:
-                        predictions = outputs['logits']
-                    if config.dataset == 'stsb':
-                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
-                    else:
-                        for i in range(predictions.shape[0]):
-                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
-                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-
-                if config.dataset == 'stsb':
-                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
-                else:
-                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
-        else:
-            trange = range(len(eval_epoch_iterator))
-            iterator = iter(eval_epoch_iterator)
-            with torch.no_grad():
-                for step in trange:
-                    inputs = prepare_inputs(next(iterator), device)
-                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
-                    metric_batch_test['loss'].append(step_loss.item())
-                    if model.metric != None:
-                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(
-                            list(step_metric.values())[0])
-                    if model.metric_1 != None:
-                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
-                            list(step_metric_1.values())[0])
-                    if step == len(eval_epoch_iterator) - 1:
-                        log.info('test---')
-                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
-                        if model.metric != None:
-                            s += ','
-                            s += (
-                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
-                        if model.metric_1 != None:
-                            s += ','
-                            s += (
-                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
-                        log.info(s)
-
-    #cubic schedule
-    total_schedule = steps * length
-    for epoch in range(steps):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'epoch{epoch} pruned weight:{w}')
-
-        totalreg = 0
-        numreg = 0
-        metric_batch = {}
-        metric_batch['loss'] = []
-        if model.metric != None:
-            metric_batch[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
-        # for step in range(1000):
-        for step in trange:
-
-            compress = config.reg*(1-(1-iter_num/total_schedule)**3)
-
-            inputs = prepare_inputs(next(iterator), device)
-            model.train()
-            optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs, pruning)
-            # 惩罚项
-            loss_history.append(step_loss.item())
-            step_loss.backward()
-            pruning.update_reg()
-            reg = pruning.reg
-            reg2 = pruning.reg2
-            reg3 = pruning.reg3
-            reg_history.append(reg.copy())
-            remain_history.append(reg2.copy())
-            weight.append(reg3)
-
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = compress
-                        module.weight.grad[new_mask == 0] += r * module.weight[new_mask == 0]
-
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
-            optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-            iter_num += 1
-        eval_loop()
-    pruning.load_model_mask()
-    print("加载mask到模型中")
-    eval_loop()
-    steps0 = config.epoch
-    compress0 = config.reg2
-    print("开始微调")
-    for epoch in range(steps0):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'epoch{epoch} pruned weight:{w}')
-
-        totalreg = 0
-        numreg = 0
-        metric_batch = {}
-        metric_batch['loss'] = []
-        if model.metric != None:
-            metric_batch[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
-        # pruning.freeze_pruned_grad()
-        for step in trange:
-            inputs = prepare_inputs(next(iterator), device)
-            model.train()
-            optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs, pruning)
-            # 惩罚项
-            loss_history.append(step_loss.item())
-            if iter_num == 0:
-                print(f"iter_num{iter_num}:loss{step_loss.item()}")
-            step_loss.backward()
-            pruning.freeze_pruned_grad()
-            # if epoch > 0:
-            pruning.update_reg()
-            reg = pruning.reg
-            reg2 = pruning.reg2
-            reg3 = pruning.reg3
-            reg_history.append(reg.copy())
-            remain_history.append(reg2.copy())
-            weight.append(reg3)
-
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = compress0
-                        module.weight.grad[new_mask == 1] += r * module.weight[new_mask == 1]
-
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
-            optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-            iter_num += 1
-        eval_loop()
-def compute_loss7_1(model, inputs,reg):
-    if "labels" in inputs:
-        labels = inputs.pop("labels")
-    outputs = model(**inputs)
-    if isinstance(model.loss, torch.nn.MSELoss):
-        logits = outputs.logits.squeeze()
-        loss = model.loss(logits, labels)  # +layer_sums
-    else:
-        logits = outputs['logits']
-        logsoftmax_func = nn.LogSoftmax(dim=1)
-        logsoftmax_logits = logsoftmax_func(logits)
-        nllloss_func = nn.NLLLoss()
-        label_loss = nllloss_func(logsoftmax_logits, labels)
-        unlabel_loss = nllloss_func(logsoftmax_logits, 1 - labels)
-        loss = label_loss + reg*(label_loss/unlabel_loss)
-    metric, metric_1 = model.compute_metrics(predictions=logits, references=labels)
-
-    return (loss, torch.clone(logits).detach().cpu(), metric, metric_1, torch.clone(labels).detach().cpu())
-
-# loss = label_loss + 1.0/(reg*unlabel_loss)
-def  train_eval_loop5(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, pruning, device, log,mask_file):
-    """
-    预训练：不加掩码对齐标签，l2压缩剪枝权重
-    有微调,
-    example : --epoch0 1 --reg 0.05 --reg_1 0.01 --epoch 2 --reg2 0.001
-    """
-    reg_history = []
-    remain_history = []
-    loss_history = []
-    weight = []
-    # Training Loop
-    length = len(train_epoch_iterator)
-    print('len:', length)
-    l = length // 3
-    steps = config.epoch0
-    iter_num = 0
-    pruning.init_mask() #注册mask
-    pruning.initmask(mask_file) # pruning load mask
-    print("pruner掩码加载完毕")
-    pruning.load_model_mask()
-    compress = config.reg
-    # Eval Loop
-    def eval_loop():
-        metric_batch_test = {}
-        metric_batch_test['loss'] = []
-        if model.metric != None:
-            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
-        if config.dataset == 'stsb' or config.dataset == 'cola':
-            trange = range(len(eval_epoch_iterator))
-            iterator = iter(eval_epoch_iterator)
-            with torch.no_grad():
-                model.eval()
-                model.zero_grad()
-                if config.dataset == 'stsb':
-                    ref = np.array([])
-                    pre = np.array([])
-                else:
-                    ref = np.array([], dtype=np.float64)
-                    pre = np.array([], dtype=np.float64)
-                for step in trange:
-                    inputs = prepare_inputs(next(iterator), device)
-                    if "labels" in inputs:
-                        labels = inputs.pop("labels")
-                    outputs = model(**inputs)
-                    if config.dataset == 'stsb':
-                        predictions = outputs.logits.squeeze()
-                    else:
-                        predictions = outputs['logits']
-                    if config.dataset == 'stsb':
-                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
-                    else:
-                        for i in range(predictions.shape[0]):
-                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
-                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-
-                if config.dataset == 'stsb':
-                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
-                else:
-                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
-        else:
-            trange = range(len(eval_epoch_iterator))
-            iterator = iter(eval_epoch_iterator)
-            with torch.no_grad():
-                for step in trange:
-                    inputs = prepare_inputs(next(iterator), device)
-                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
-                    metric_batch_test['loss'].append(step_loss.item())
-                    if model.metric != None:
-                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(
-                            list(step_metric.values())[0])
-                    if model.metric_1 != None:
-                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
-                            list(step_metric_1.values())[0])
-                    if step == len(eval_epoch_iterator) - 1:
-                        log.info('test---')
-                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
-                        if model.metric != None:
-                            s += ','
-                            s += (
-                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
-                        if model.metric_1 != None:
-                            s += ','
-                            s += (
-                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
-                        log.info(s)
-
-    #cubic schedule
-    total_schedule = steps * length
-    left = length  * steps * 0.3
-    right = length  * steps * 0.7
-    for epoch in range(steps):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'epoch{epoch} pruned weight:{w}')
-
-        totalreg = 0
-        numreg = 0
-        metric_batch = {}
-        metric_batch['loss'] = []
-        if model.metric != None:
-            metric_batch[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
-        # for step in range(1000):
-        for step in trange:
-            # if iter_num <= left or iter_num >= right:
-            #     compress = config.reg + 0.03
-            compress = config.reg
-
-            inputs = prepare_inputs(next(iterator), device)
-            model.train()
-            optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss7(model, inputs,config.reg_1)
-            # 惩罚项
-            loss_history.append(step_loss.item())
-            step_loss.backward()
-            pruning.update_reg()
-            reg = pruning.reg
-            reg2 = pruning.reg2
-            reg3 = pruning.reg3
-            reg_history.append(reg.copy())
-            remain_history.append(reg2.copy())
-            weight.append(reg3)
-
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = compress
-                        module.weight.grad[new_mask == 0] += r * module.weight[new_mask == 0]
-
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
-            optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-            iter_num += 1
-        eval_loop()
-    # pruning.load_model_mask()
-    print("加载mask到模型中")
-    eval_loop()
-    steps0 = config.epoch
-    compress0 = config.reg2
-    print("开始微调")
-    for epoch in range(steps0):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'epoch{epoch} pruned weight:{w}')
-
-        totalreg = 0
-        numreg = 0
-        metric_batch = {}
-        metric_batch['loss'] = []
-        if model.metric != None:
-            metric_batch[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
-        # pruning.freeze_pruned_grad()
-        for step in trange:
-            inputs = prepare_inputs(next(iterator), device)
-            model.train()
-            optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs, pruning)
-            # 惩罚项
-            loss_history.append(step_loss.item())
-            step_loss.backward()
-            pruning.freeze_pruned_grad()
-            # if epoch > 0:
-            pruning.update_reg()
-            reg = pruning.reg
-            reg2 = pruning.reg2
-            reg3 = pruning.reg3
-            reg_history.append(reg.copy())
-            remain_history.append(reg2.copy())
-            weight.append(reg3)
-
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = compress0
-                        module.weight.grad[new_mask == 1] += r * module.weight[new_mask == 1]
-
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
-            optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-            iter_num += 1
-        eval_loop()
-# loss = label_loss + reg*(label_loss/unlabel_loss)
-def train_eval_loop5_1(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, pruning, device, log,mask_file):
-    """
-    预训练：不加掩码对齐标签，l2压缩剪枝权重
-    有微调,
-    example : --epoch0 1 --reg 0.05 --reg_1 0.5 --epoch 2 --reg2 0.001
-    """
-    reg_history = []
-    remain_history = []
-    loss_history = []
-    weight = []
-    # Training Loop
-    length = len(train_epoch_iterator)
-    print('len:', length)
-    l = length // 3
-    steps = config.epoch0
-    iter_num = 0
-    pruning.init_mask() #注册mask
-    pruning.initmask(mask_file) # pruning load mask
-    print("pruner掩码加载完毕")
-
-    compress = config.reg
-    # Eval Loop
-    def eval_loop():
-        metric_batch_test = {}
-        metric_batch_test['loss'] = []
-        if model.metric != None:
-            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
-        if config.dataset == 'stsb' or config.dataset == 'cola':
-            trange = range(len(eval_epoch_iterator))
-            iterator = iter(eval_epoch_iterator)
-            with torch.no_grad():
-                model.eval()
-                model.zero_grad()
-                if config.dataset == 'stsb':
-                    ref = np.array([])
-                    pre = np.array([])
-                else:
-                    ref = np.array([], dtype=np.float64)
-                    pre = np.array([], dtype=np.float64)
-                for step in trange:
-                    inputs = prepare_inputs(next(iterator), device)
-                    if "labels" in inputs:
-                        labels = inputs.pop("labels")
-                    outputs = model(**inputs)
-                    if config.dataset == 'stsb':
-                        predictions = outputs.logits.squeeze()
-                    else:
-                        predictions = outputs['logits']
-                    if config.dataset == 'stsb':
-                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
-                    else:
-                        for i in range(predictions.shape[0]):
-                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
-                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-
-                if config.dataset == 'stsb':
-                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
-                else:
-                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
-        else:
-            trange = range(len(eval_epoch_iterator))
-            iterator = iter(eval_epoch_iterator)
-            with torch.no_grad():
-                for step in trange:
-                    inputs = prepare_inputs(next(iterator), device)
-                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
-                    metric_batch_test['loss'].append(step_loss.item())
-                    if model.metric != None:
-                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(
-                            list(step_metric.values())[0])
-                    if model.metric_1 != None:
-                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
-                            list(step_metric_1.values())[0])
-                    if step == len(eval_epoch_iterator) - 1:
-                        log.info('test---')
-                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
-                        if model.metric != None:
-                            s += ','
-                            s += (
-                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
-                        if model.metric_1 != None:
-                            s += ','
-                            s += (
-                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
-                        log.info(s)
-
-    #cubic schedule
-    total_schedule = steps * length
-    for epoch in range(steps):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'epoch{epoch} pruned weight:{w}')
-
-        totalreg = 0
-        numreg = 0
-        metric_batch = {}
-        metric_batch['loss'] = []
-        if model.metric != None:
-            metric_batch[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
-        # for step in range(1000):
-        for step in trange:
-
-            compress = config.reg
-
-            inputs = prepare_inputs(next(iterator), device)
-            model.train()
-            optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss7_1(model, inputs,config.reg_1)
-            # 惩罚项
-            loss_history.append(step_loss.item())
-            step_loss.backward()
-            pruning.update_reg()
-            reg = pruning.reg
-            reg2 = pruning.reg2
-            reg3 = pruning.reg3
-            reg_history.append(reg.copy())
-            remain_history.append(reg2.copy())
-            weight.append(reg3)
-
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = compress
-                        module.weight.grad[new_mask == 0] += r * module.weight[new_mask == 0]
-
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
-            optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-            iter_num += 1
-        eval_loop()
-    pruning.load_model_mask()
-    print("加载mask到模型中")
-    eval_loop()
-    steps0 = config.epoch
-    compress0 = config.reg2
-    print("开始微调")
-    for epoch in range(steps0):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'epoch{epoch} pruned weight:{w}')
-
-        totalreg = 0
-        numreg = 0
-        metric_batch = {}
-        metric_batch['loss'] = []
-        if model.metric != None:
-            metric_batch[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
-        # pruning.freeze_pruned_grad()
-        for step in trange:
-            inputs = prepare_inputs(next(iterator), device)
-            model.train()
-            optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs, pruning)
-            # 惩罚项
-            loss_history.append(step_loss.item())
-            step_loss.backward()
-            pruning.freeze_pruned_grad()
-            # if epoch > 0:
-            pruning.update_reg()
-            reg = pruning.reg
-            reg2 = pruning.reg2
-            reg3 = pruning.reg3
-            reg_history.append(reg.copy())
-            remain_history.append(reg2.copy())
-            weight.append(reg3)
-
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = compress0
-                        module.weight.grad[new_mask == 1] += r * module.weight[new_mask == 1]
-
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
-            optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-            iter_num += 1
-        eval_loop()
-
-def compute_loss8(model, model1, inputs):
-    if "labels" in inputs:
-        labels = inputs.pop("labels")
-    outputs = model(**inputs)
-    outputs1 = model1(**inputs)
-    lossfunction= torch.nn.SmoothL1Loss()
-    if isinstance(model.loss, torch.nn.MSELoss):
-        logits = outputs.logits.squeeze()
-        loss = model.loss(logits, labels)  # +layer_sums
-    else:
-        logits = outputs['logits']
-        logits1 = outputs1['logits']
-        logits_loss = lossfunction(logits,logits1)
-
-        # output = outputs['hidden_layer']['pooler_output']
-        # output1 = outputs1['hidden_layer']['pooler_output']
-        # feature_loss = lossfunction(output,output1)
-    metric, metric_1 = model.compute_metrics(predictions=logits, references=labels)
-
-    return (logits_loss, torch.clone(logits).detach().cpu(), metric, metric_1, torch.clone(labels).detach().cpu())
-# logits_loss = torch.nn.SmoothL1Loss(logits,logits1)
-# 双模型，冻结剪枝权重的梯度，微调阶段对保留权重添加l2，预训练阶段对剪枝权重惩罚一致
-def train_eval_loop6(config, model, model1, train_epoch_iterator, eval_epoch_iterator, optimizer, pruning, device, log, mask_file):
-    """
-        双模型，冻结剪枝权重的梯度，微调阶段对保留权重添加l2
-    """
-    # !python train_bert2.py --dataset mrpc --seed 404 --epoch0 20 --epoch 10 --reg 0.05 --reg2 0.001
-    reg_history = []
-    remain_history = []
-    loss_history = []
-    weight = []
-    # Training Loop
-    length = len(train_epoch_iterator)
-    print('len:', length)
-    l = length // 3
-    metric_epoch = {}
-    steps = config.epoch
-    iter_num = 0
-    metric_epoch['loss'] = []
-    if model.metric != None:
-        metric_name = f"{model.metric.__class__.__name__}"
-        metric_epoch[f"{model.metric.__class__.__name__}"] = []
+    count_lp = len(loss_gap[0])
+    print(count_lp)
+    loss_g_file = f"lp_{config['model']}_{config['dataset']}_{config['seed']}_{config['reg']}_{config['batchsize']}.csv"
+    df = pd.DataFrame(loss_gap,columns=[i for i in range(count_lp)])
+    df.to_csv(loss_g_file, index=False)
+    name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.seed}.csv"
+    df = pd.DataFrame(train_eval[name1])
+    df.to_csv(name1_file, index=False)
     if model.metric_1 != None:
-        metric_1_name = f"{model.metric_1.__class__.__name__}"
-        metric_epoch[f"{model.metric_1.__class__.__name__}"] = []
-    pruning.init_mask()
-    pruning.initmask(mask_file)
-
-    for epoch in range(config.epoch0):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'1 epoch before  pruned weight:{w}')
-        totalreg = 0
-        numreg = 0
-        metric_batch = {}
-        metric_batch_test = {}
-        metric_batch['loss'] = []
-        metric_batch_test['loss'] = []
-
-        if model.metric != None:
-            metric_batch[f"{model.metric.__class__.__name__}"] = []
-            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
-        for step in trange:
-            inputs = prepare_inputs(next(iterator), device)
-            model.train()
-            model1.eval()
-            optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss8(model, model1, inputs)
-            # 惩罚项
-            reg = pruning.reg
-            reg2 = pruning.reg2
-            reg3 = pruning.reg3
-            loss_history.append(step_loss.item())
-            if iter_num >= config.t_i and iter_num < (config.t_i + config.iter_num) - 1:
-                if config.pruning_algo == 'soft_movement':
-                    r = (pruning.keep_ratio) + (1 - pruning.keep_ratio) * (
-                            (1 - (iter_num - config.t_i + 1) / pruning.config.iter_num) ** (3))
-                    reg = 0
-                    num = 0
-                    g = torch.autograd.grad(step_loss, [i.weight for i in pruning._prunable_modules()],
-                                            create_graph=True)
-                    pruning._param_gradients = dict()
-                    for module, grad in zip(pruning._prunable_modules(), g):
-                        pruning._param_gradients[module] = grad
-                        reg += torch.norm(torch.sigmoid(grad * module.weight), 1)
-                        num += grad.numel()
-                    step_loss += (r * reg / torch.tensor(num))
-
-            step_loss.backward()
-            if epoch > 0:
-                pruning.update_reg()
-                reg_history.append(reg.copy())
-                remain_history.append(reg2.copy())
-                weight.append(reg3)
-
-            # step_loss.backward(create_graph=True)
-            # if epoch == steps-1 and step % 20 == 0:
-            #     pruning.update_reg()
-            #     reg_history.append(reg.copy())
-            # 通过梯度实现L2惩罚
-
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = config.reg
-                        module.weight.grad[new_mask == 0] += r * module.weight[new_mask == 0]
-
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
-            # print(pruning.reg)
-            # l2_grad = reg * m.weight
-            # if self.args.block_loss_grad:
-            #     m.weight.grad = l2_grad
-            # else:
-            #     m.weight.grad += l2_grad
-            optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-
-            metric_batch['loss'].append(step_loss.item())
-            if model.metric != None:
-                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
-            if model.metric_1 != None:
-                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
-
-            if step % l == 0:
-                s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
-                if model.metric != None:
-                    s += ','
-                    s += (
-                        f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
-                if model.metric_1 != None:
-                    s += ','
-                    s += (
-                        f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
-                log.info(s)
-            # if iter_num>=config.t_i and iter_num<(config.t_i+config.iter_num)-1 and 'movement' not in config.pruning_algo:
-            # if iter_num >= config.t_i and iter_num < (config.t_i + config.iter_num) - 1:
-            #     pruning.model_masks(iter_num=iter_num-config.t_i)
-            #     if iter_num==config.t_i:
-            #         pruning.log.info('------------pruning------------')
-            #     if iter_num==(config.t_i+config.iter_num)-2:
-            #         remain=0
-            #         total=0
-            #         for _, mask in pruning.masks.items():
-            #             remain += mask.sum().item()
-            #             total += mask.numel()
-            #         pruning.log.info('------------pruning end,true remain ratio:'+str(remain/total)+'------------')
-            iter_num += 1
-        print(f"平均系数: {totalreg / numreg}")
-        # w=0
-        # g=0
-        # for name, module in model.named_modules():
-        #     if pruning.can_prune(module):
-        #         new_mask = pruning.masks[module]
-        #         # print(type(module.weight.grad),module.weight.grad)
-        #         w += module.weight[new_mask==0].sum().item()
-        #         g += module.weight.grad[new_mask==0].sum().item()
-        #         break
-        # print(f'1 epoch pruned weight:{w}')
-        # print(f'pruned grad:{g}')
-        # Eval Loop
-        if config.dataset == 'stsb' or config.dataset == 'cola':
-            trange = range(len(eval_epoch_iterator))
-            iterator = iter(eval_epoch_iterator)
-            with torch.no_grad():
-
-                model.eval()
-                model.zero_grad()
-                if config.dataset == 'stsb':
-                    ref = np.array([])
-                    pre = np.array([])
-                else:
-                    ref = np.array([], dtype=np.float64)
-                    pre = np.array([], dtype=np.float64)
-                for step in trange:
-                    inputs = prepare_inputs(next(iterator), device)
-                    if "labels" in inputs:
-                        labels = inputs.pop("labels")
-                    outputs = model(**inputs)
-                    if config.dataset == 'stsb':
-                        predictions = outputs.logits.squeeze()
-                    else:
-                        predictions = outputs['logits']
-                    if config.dataset == 'stsb':
-                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
-                    else:
-                        for i in range(predictions.shape[0]):
-                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
-                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-
-                if config.dataset == 'stsb':
-                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
-                else:
-                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
-        else:
-            with torch.no_grad():
-                for step in trange_eavl:
-                    inputs = prepare_inputs(next(iterator_eval), device)
-                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
-                    metric_batch_test['loss'].append(step_loss.item())
-                    if model.metric != None:
-                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
-                    if model.metric_1 != None:
-                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
-                            list(step_metric_1.values())[0])
-                    if step == len(eval_epoch_iterator) - 1:
-                        log.info('test---')
-                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
-                        if model.metric != None:
-                            s += ','
-                            s += (
-                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
-                        if model.metric_1 != None:
-                            s += ','
-                            s += (
-                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
-                        log.info(s)
-    pruning.load_model_mask()
-    for epoch in range(steps):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'1 epoch before  pruned weight:{w}')
-        totalreg = 0
-        numreg = 0
-        metric_batch = {}
-        metric_batch_test = {}
-        metric_batch['loss'] = []
-        metric_batch_test['loss'] = []
-
-        if model.metric != None:
-            metric_batch[f"{model.metric.__class__.__name__}"] = []
-            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
-        if model.metric_1 != None:
-            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        iterator_eval = iter(eval_epoch_iterator)
-        trange_eavl = range(len(eval_epoch_iterator))
-        for step in trange:
-            inputs = prepare_inputs(next(iterator), device)
-            model.train()
-            optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs, pruning)
-            # 惩罚项
-            reg = pruning.reg
-            reg2 = pruning.reg2
-            reg3 = pruning.reg3
-            loss_history.append(step_loss.item())
-            if iter_num >= config.t_i and iter_num < (config.t_i + config.iter_num) - 1:
-                if config.pruning_algo == 'soft_movement':
-                    r = (pruning.keep_ratio) + (1 - pruning.keep_ratio) * (
-                            (1 - (iter_num - config.t_i + 1) / pruning.config.iter_num) ** (3))
-                    reg = 0
-                    num = 0
-                    g = torch.autograd.grad(step_loss, [i.weight for i in pruning._prunable_modules()],
-                                            create_graph=True)
-                    pruning._param_gradients = dict()
-                    for module, grad in zip(pruning._prunable_modules(), g):
-                        pruning._param_gradients[module] = grad
-                        reg += torch.norm(torch.sigmoid(grad * module.weight), 1)
-                        num += grad.numel()
-                    step_loss += (r * reg / torch.tensor(num))
-
-            step_loss.backward()
-            pruning.freeze_pruned_grad()
-            pruning.update_reg()
-            reg_history.append(reg.copy())
-            remain_history.append(reg2.copy())
-            weight.append(reg3)
-            # for name, module in model.named_modules():
-            #     if pruning.can_prune(module):
-            #         print("2 epoch in pruned weight ", module.weight.data[pruning.masks[module] == 0].sum().item())
-            #         print("2 epoch in pruned grad ", module.weight.grad[pruning.masks[module] == 0].sum().item())
-            #         print("2 epoch in remain grad ", module.weight.grad[pruning.masks[module] == 1].sum().item())
-            #         break
-            #
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = config.reg2
-                        module.weight.grad[new_mask == 1] += r * module.weight[new_mask == 1]
-
-            totalreg += sum(pruning.reg.values())
-            numreg += len(pruning.reg)
-            optimizer.step()
-            if pruning.lr_scheduler is not None:
-                pruning.lr_scheduler.step()
-
-            metric_batch['loss'].append(step_loss.item())
-            if model.metric != None:
-                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
-            if model.metric_1 != None:
-                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
-
-            if step % l == 0:
-                s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
-                if model.metric != None:
-                    s += ','
-                    s += (
-                        f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
-                if model.metric_1 != None:
-                    s += ','
-                    s += (
-                        f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
-                log.info(s)
-            iter_num += 1
-        print(f"平均系数: {totalreg / numreg}")
-        # w=0
-        # g=0
-        # for name, module in model.named_modules():
-        #     if pruning.can_prune(module):
-        #         new_mask = pruning.masks[module]
-        #         w += module.weight[new_mask==0].sum().item()
-        #         g += module.weight.grad[new_mask==0].sum().item()
-        #         break
-        # print(f'2 epoch pruned weight:{w}')
-        # print(f'pruned grad:{g}')
-        # Eval Loop
-        if config.dataset == 'stsb' or config.dataset == 'cola':
-            trange = range(len(eval_epoch_iterator))
-            iterator = iter(eval_epoch_iterator)
-            with torch.no_grad():
-
-                model.eval()
-                model.zero_grad()
-                if config.dataset == 'stsb':
-                    ref = np.array([])
-                    pre = np.array([])
-                else:
-                    ref = np.array([], dtype=np.float64)
-                    pre = np.array([], dtype=np.float64)
-                for step in trange:
-                    inputs = prepare_inputs(next(iterator), device)
-                    if "labels" in inputs:
-                        labels = inputs.pop("labels")
-                    outputs = model(**inputs)
-                    if config.dataset == 'stsb':
-                        predictions = outputs.logits.squeeze()
-                    else:
-                        predictions = outputs['logits']
-                    if config.dataset == 'stsb':
-                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
-                    else:
-                        for i in range(predictions.shape[0]):
-                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
-                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
-
-                if config.dataset == 'stsb':
-                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
-                else:
-                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
-        else:
-            with torch.no_grad():
-                for step in trange_eavl:
-                    inputs = prepare_inputs(next(iterator_eval), device)
-                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
-                    metric_batch_test['loss'].append(step_loss.item())
-                    if model.metric != None:
-                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
-                    if model.metric_1 != None:
-                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
-                            list(step_metric_1.values())[0])
-                    if step == len(eval_epoch_iterator) - 1:
-                        log.info('test---')
-                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
-                        if model.metric != None:
-                            s += ','
-                            s += (
-                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
-                        if model.metric_1 != None:
-                            s += ','
-                            s += (
-                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
-                        log.info(s)
-    # if epoch > 0:
-    reg_file = f"huber_pruned_{config.reg}.csv"
-    df = pd.DataFrame(reg_history)
-    df.to_csv(reg_file, index=False)
-    reg2_file = f"huber_remain_{config.reg}.csv"
-    df = pd.DataFrame(remain_history)
-    df.to_csv(reg2_file, index=False)
-    loss_file = f"huber_loss_{config.reg}.csv"
-    df = pd.DataFrame(loss_history)
-    df.to_csv(loss_file, index=False)
-    weight_file = f"huber_weight_{config.reg}.csv"
-    df = pd.DataFrame(weight)
-    df.to_csv(weight_file, index=False)
-    # reg_history = []
-
-# 双模型，取分类头上一层的输出，过滤掉分类头对损失颗粒的影响，统计直接压缩前后模型对标初始模型损失之差（不同batch）
-def statistics_loss2(config, model, model1, train_epoch_iterator,eval_epoch_iterator, optimizer, pruning, device, log,mask_file):
-    """
-    双模型，取分类头上一层的输出，过滤掉分类头对损失颗粒的影响，
-    统计直接压缩前后模型对标初始模型损失之差（不同batch）
-    压缩一次
-    example : --epoch 1 --reg 5e-7 --step 0
-    """
-    loss_before = {'loss':[],
-                   'label_loss':[],
-                   'unlabel_loss':[],
-                   'all_loss':[],
-                   'feature_loss':[]}
-    loss_after = {'loss':[],
-                  'label_loss':[],
-                   'unlabel_loss':[],
-                   'all_loss':[],
-                   'feature_loss':[]}
-    loss_gap = []
-    # Training Loop
-    length = len(train_epoch_iterator)
-    print('len:', length)
-    steps = config.epoch
-    iter_num = 0
-
-    pruning.init_mask() #注册mask
-    pruning.initmask(mask_file) # pruning load mask
-    print("pruner掩码加载完毕")
-    compress = config.reg
-
-    for epoch in range(steps):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'epoch {epoch} before pruned weight:{w}')
-        #不同压缩阶段
-        for step_ in range(config.step):
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = 1 - compress
-                        module.weight[new_mask == 0] = r * module.weight[new_mask == 0]
-        #压缩前
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        for step in trange:
-            inputs = prepare_inputs(next(iterator), device)
-            labels=inputs.pop("labels")
-            model.eval()
-            # model1.eval()
-            # outputs = model(**inputs)
-            # print(f"labels:{labels}")
-            # print(f"logits:{outputs['logits']}")
-            # print(f"pooler_output:{outputs['hidden_layer']['pooler_output'].shape} {outputs['hidden_layer']['pooler_output'].flatten().shape} {outputs['hidden_layer']['pooler_output'].flatten()}")
-            loss,label_loss,unlabel_loss,all_loss,feature_loss = compute_output_loss(model,inputs,labels)
-            # 压缩前
-            loss_before['loss'].append(loss)
-            loss_before['label_loss'].append(label_loss)
-            loss_before['unlabel_loss'].append(unlabel_loss)
-            loss_before['all_loss'].append(all_loss)
-            loss_before['feature_loss'].append(feature_loss)
-        with torch.no_grad():
-            for name, module in model.named_modules():
-                if pruning.can_prune(module):
-                    new_mask = pruning.masks[module]
-                    r = 1 - compress
-                    module.weight[new_mask == 0] = r * module.weight[new_mask == 0]
-        #压缩后
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        for step in trange:
-            inputs = prepare_inputs(next(iterator), device)
-            labels = inputs.pop("labels")
-            model.eval()
-            # model1.eval()
-            loss,label_loss, unlabel_loss, all_loss, feature_loss = compute_output_loss(model, inputs, labels)
-            # 压缩后
-            loss_after['loss'].append(loss)
-            loss_after['label_loss'].append(label_loss)
-            loss_after['unlabel_loss'].append(unlabel_loss)
-            loss_after['all_loss'].append(all_loss)
-            loss_after['feature_loss'].append(feature_loss)
-
-    loss_gap = [a-b for a,b in zip(loss_after['loss'],loss_before['loss'])]
-    loss_gap_file = f"loss_gap_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(loss_gap)
-    df.to_csv(loss_gap_file, index=False)
-
-    label_loss_gap = [a-b for a,b in zip(loss_after['label_loss'],loss_before['label_loss'])]
-    label_loss_gap_file = f"label_loss_gap_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(label_loss_gap)
-    df.to_csv(label_loss_gap_file, index=False)
-
-    unlabel_loss_gap = [a-b for a,b in zip(loss_after['unlabel_loss'],loss_before['unlabel_loss'])]
-    unlabel_loss_gap_file = f"unlabel_loss_gap_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(unlabel_loss_gap)
-    df.to_csv(unlabel_loss_gap_file, index=False)
-
-    all_loss_gap = [a-b for a,b in zip(loss_after['all_loss'],loss_before['all_loss'])]
-    all_loss_gap_file = f"all_loss_gap_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(all_loss_gap)
-    df.to_csv(all_loss_gap_file, index=False)
-
-    feature_loss_gap = [a-b for a,b in zip(loss_after['feature_loss'],loss_before['feature_loss'])]
-    feature_loss_gap_file = f"feature_loss_gap_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(feature_loss_gap)
-    df.to_csv(feature_loss_gap_file, index=False)
-
-    all_loss = loss_before['all_loss']
-    all_loss_file = f"all_loss_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(all_loss)
-    df.to_csv(all_loss_file, index=False)
-
-    label_loss = loss_before['label_loss']
-    label_loss_file = f"label_loss_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(label_loss)
-    df.to_csv(label_loss_file, index=False)
-
-    unlabel_loss = loss_before['unlabel_loss']
-    unlabel_loss_file = f"unlabel_loss_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(unlabel_loss)
-    df.to_csv(unlabel_loss_file, index=False)
-
-    all_loss_after = loss_after['all_loss']
-    all_loss_after_file = f"all_loss_after_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(all_loss_after)
-    df.to_csv(all_loss_after_file, index=False)
-
-    label_loss_after = loss_after['label_loss']
-    label_loss_after_file = f"label_loss_after_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(label_loss_after)
-    df.to_csv(label_loss_after_file, index=False)
-
-    unlabel_loss_after = loss_after['unlabel_loss']
-    unlabel_loss_after_file = f"unlabel_loss_after_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(unlabel_loss_after)
-    df.to_csv(unlabel_loss_after_file, index=False)
-
-def statistics_loss3(config, model, model1, train_epoch_iterator,eval_epoch_iterator, optimizer, pruning, device, log,mask_file):
-    """
-    双模型，取分类头上一层的输出，过滤掉分类头对损失颗粒的影响，
-    统计直接压缩前后模型对标初始模型损失之差（不同batch）
-    压缩一次
-    example : --epoch 1 --reg 5e-7 --step 0
-    """
-    loss_before = {'logits_loss':[],
-                   'feature_loss':[]}
-    loss_after = {'logits_loss':[],
-                   'feature_loss':[]}
-    loss_gap = []
-    # Training Loop
-    length = len(train_epoch_iterator)
-    print('len:', length)
-    steps = config.epoch
-    iter_num = 0
-
-    pruning.init_mask() #注册mask
-    pruning.initmask(mask_file) # pruning load mask
-    print("pruner掩码加载完毕")
-    compress = config.reg
-
-    for epoch in range(steps):
-        w = 0
-        for name, module in model.named_modules():
-            if pruning.can_prune(module):
-                new_mask = pruning.masks[module]
-                # print(type(module.weight.grad),module.weight.grad)
-                w += module.weight[new_mask == 0].abs().sum().item()
-                break
-        print(f'epoch {epoch} before pruned weight:{w}')
-        #不同压缩阶段
-        for step_ in range(config.step):
-            with torch.no_grad():
-                for name, module in model.named_modules():
-                    if pruning.can_prune(module):
-                        new_mask = pruning.masks[module]
-                        r = 1 - compress
-                        module.weight[new_mask == 0] = r * module.weight[new_mask == 0]
-        #压缩前
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        for step in trange:
-            inputs = prepare_inputs(next(iterator), device)
-            labels=inputs.pop("labels")
-            model.eval()
-            model1.eval()
-            # outputs = model(**inputs)
-            # print(f"labels:{labels}")
-            # print(f"logits:{outputs['logits']}")
-            # print(f"pooler_output:{outputs['hidden_layer']['pooler_output'].shape} {outputs['hidden_layer']['pooler_output'].flatten().shape} {outputs['hidden_layer']['pooler_output'].flatten()}")
-            logits_loss,feature_loss = compute_output_loss1(model,inputs,labels,model1)
-            loss_before['logits_loss'].append(logits_loss)
-            loss_before['feature_loss'].append(feature_loss)
-        with torch.no_grad():
-            for name, module in model.named_modules():
-                if pruning.can_prune(module):
-                    new_mask = pruning.masks[module]
-                    r = 1 - compress
-                    module.weight[new_mask == 0] = r * module.weight[new_mask == 0]
-        #压缩后
-        iterator = iter(train_epoch_iterator)
-        trange = range(len(train_epoch_iterator))
-        for step in trange:
-            inputs = prepare_inputs(next(iterator), device)
-            labels = inputs.pop("labels")
-            model.eval()
-            model1.eval()
-            logits_loss, feature_loss = compute_output_loss1(model, inputs, labels, model1)
-            loss_after['logits_loss'].append(logits_loss)
-            loss_after['feature_loss'].append(feature_loss)
-
-    logits_loss_gap = [a-b for a,b in zip(loss_after['logits_loss'],loss_before['logits_loss'])]
-    logits_loss_gap_file = f"logits_loss_gap_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(logits_loss_gap)
-    df.to_csv(logits_loss_gap_file, index=False)
-
-    feature_loss_gap = [a-b for a,b in zip(loss_after['feature_loss'],loss_before['feature_loss'])]
-    feature_loss_gap_file = f"feature_loss_gap_{config.dataset}_{config.reg}_{config.seed}.csv"
-    df = pd.DataFrame(feature_loss_gap)
-    df.to_csv(feature_loss_gap_file, index=False)
-
-
+        name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.seed}.csv"
+        df = pd.DataFrame(train_eval[name2])
+        df.to_csv(name2_file, index=False)

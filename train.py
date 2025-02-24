@@ -1,6 +1,6 @@
 from strategies import pruner
 from utils import *
-from dataloader import get_dataloader
+from dataloader import *
 from transformers import get_cosine_schedule_with_warmup
 import copy
 import time
@@ -13,7 +13,7 @@ def main():
 
     # Config Settings
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model_checkpoint = "bert-base-uncased"
+    model_checkpoint = config.model
     task = config.dataset
     batch_size = config.batchsize
     steps = config.epoch
@@ -21,7 +21,7 @@ def main():
     lr = config.learning_rate
     # Load DataLoader
     print(f"\nLoading data...")
-    train_epoch_iterator, eval_epoch_iterator = get_dataloader(task, model_checkpoint, shuffle=True,batch_size=batch_size)
+    train_epoch_iterator, eval_epoch_iterator,train_dataloader1 = get_dataloader3(task, model_checkpoint, shuffle=True,batch_size=batch_size)
 
     # Load Pre-trained Model
     print(f"\nLoading pre-trained BERT model \"{model_checkpoint}\"")
@@ -31,7 +31,8 @@ def main():
     # optimizer1 = create_optimizer(model1, learning_rate=lr,config=config,batch_num=len(train_epoch_iterator))
     print('train data len:', len(train_epoch_iterator))
     # train_eval_loop(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
-    train_ft_loop(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
+    # train_ft_loop(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
+    train_lp_loop(config, model, train_epoch_iterator, train_dataloader1,eval_epoch_iterator, optimizer, device, log)
     end_time = time.time()
     total_time = end_time - start_time
     s = f'Total training time: {total_time}'
