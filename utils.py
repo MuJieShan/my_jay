@@ -1869,7 +1869,7 @@ def  train_lp_loop(config, model, train_epoch_iterator,train_dataloader1,eval_ep
         for key in keys:
             loss_gap[key].append(loss_g_gap[key])
         del model_lp
-        print(loss_gap)
+        # print(loss_gap)
 
     model_checkpoint = config.model
     task = config.dataset
