@@ -46,13 +46,17 @@ def main():
     loss_after = {}
     iterator = iter(train_epoch_iterator)
     trange = range(len(train_epoch_iterator))
+
+    before = tqdm(total=len(train_epoch_iterator), desc=f"lp before")
     for step in trange:
+        before.update(1)
         inputs = prepare_inputs(next(iterator), device)
         model.eval()
         step_idx = inputs["idx"]
         loss = compute_loss(model, inputs)
         for i in range(len(step_idx)):
             loss_before[step_idx[i].item()] = loss
+    before.close()
     with torch.no_grad():
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear):
@@ -60,13 +64,16 @@ def main():
                 module.weight.data = r * module.weight.data
     iterator = iter(train_epoch_iterator)
     trange = range(len(train_epoch_iterator))
+    after = tqdm(total=len(train_epoch_iterator), desc=f"lp after")
     for step in trange:
+        after.update(1)
         inputs = prepare_inputs(next(iterator), device)
         model.eval()
         step_idx = inputs["idx"]
         loss = compute_loss(model, inputs)
         for i in range(len(step_idx)):
             loss_after[step_idx[i].item()] = loss
+    after.close()
     if config.pruneFlag=="random":
         common_keys = [key for key in loss_after if key in loss_before]
         loss_gap = {key: index for index, key in enumerate(common_keys)}
