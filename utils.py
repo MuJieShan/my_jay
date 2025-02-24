@@ -1704,7 +1704,7 @@ def init_config():
     args = parser.parse_args()
     base_config = {'dataset': "mrpc",'model': "bert-base-uncased",'state': "ft",
                    'batchsize': 32, 'epoch': 10,'epoch0': 1,'step':0, 'learning_rate': 2e-5, 'target_ratio': 0.50,
-                   'seed': 3404, 'prune_batchsize': 32, 'reg': 0.05, 'weight_decay': 0.001, 'remain_loss': 0, 'shuffle': "True",'pruneFlag': "up",'method': "el2n",'optim': "adamw_torch"}
+                   'seed': 3404, 'prune_batchsize': 32, 'reg': 5e-8, 'weight_decay': 0.001, 'remain_loss': 0, 'shuffle': "True",'pruneFlag': "up",'method': "el2n",'optim': "adamw_torch"}
     config = edict(base_config)
     for key, value in vars(args).items():
         if value is not None:
