@@ -1694,7 +1694,7 @@ def init_config():
     parser.add_argument('--prune_batchsize', type=int, default=None)
     parser.add_argument('--target_ratio', type=float, default=None)
     parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--reg', type=float, default=0.5, help="used the reg in state 'unlabel'")
+    parser.add_argument('--reg', type=float, default=5e-8, help="used the reg in state 'unlabel'")
     parser.add_argument('--weight_decay', type=float, default=0.001, help="the coefficient of L2 penalty")
     parser.add_argument('--remain_loss', type=int, default=0)
     parser.add_argument('--shuffle', type=str, default="True")
