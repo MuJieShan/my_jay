@@ -55,7 +55,7 @@ def main():
         step_idx = inputs["idx"]
         loss = compute_loss(model, inputs)
         for i in range(len(step_idx)):
-            loss_before[step_idx[i].item()] = loss
+            loss_before[step_idx[i].item()] = loss.data
     before.close()
     with torch.no_grad():
         for name, module in model.named_modules():
@@ -72,7 +72,7 @@ def main():
         step_idx = inputs["idx"]
         loss = compute_loss(model, inputs)
         for i in range(len(step_idx)):
-            loss_after[step_idx[i].item()] = loss
+            loss_after[step_idx[i].item()] = loss.data
     after.close()
     if config.pruneFlag=="random":
         common_keys = [key for key in loss_after if key in loss_before]
