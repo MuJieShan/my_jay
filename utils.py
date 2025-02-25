@@ -1730,7 +1730,7 @@ def seed_torch(seed=3404):
     torch.backends.cudnn.enabled = True
 
 
-#损失颗粒
+# 每个epoch的每个样本的损失颗粒
 def  train_lp_loop(config, model, train_epoch_iterator,train_dataloader1,eval_epoch_iterator, optimizer, device, log):
     """
     计算每个样本的损失颗粒
@@ -1932,6 +1932,169 @@ def  train_lp_loop(config, model, train_epoch_iterator,train_dataloader1,eval_ep
     model_lp.to(next(model.parameters()).device)
     loss_particles(model_lp, steps, loss_gap)
     del model_lp
+
+    count_lp = len(loss_gap[0])
+    print(count_lp)
+    loss_g_file = f"lp_{config['model']}_{config['dataset']}_{config['seed']}_{config['reg']}_{config['batchsize']}.csv"
+    df = pd.DataFrame(loss_gap,columns=[i for i in range(count_lp)])
+    df.to_csv(loss_g_file, index=False)
+    name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.seed}.csv"
+    df = pd.DataFrame(train_eval[name1])
+    df.to_csv(name1_file, index=False)
+    if model.metric_1 != None:
+        name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.seed}.csv"
+        df = pd.DataFrame(train_eval[name2])
+        df.to_csv(name2_file, index=False)
+
+# 不同r、每个样本的损失颗粒
+def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_epoch_iterator, optimizer, device, log):
+    """
+    计算每个样本的损失颗粒
+    每个惩罚系数r(2e-8)统计一次
+    目的：观察是否真的存在颗粒裂解的情况
+    example : !python ../train.py --dataset mrpc --seed 3404 --epoch 1 --reg 5e-08 --weight_decay 0.001 --model bert-base-uncased --batchsize 32
+    """
+    name1 = f"{model.metric.__class__.__name__}"
+    train_eval = {name1: []}
+    if model.metric_1 != None:
+        name2 = f'{model.metric_1.__class__.__name__}'
+        train_eval[name2] = []
+    # Training Loop
+    length = len(train_epoch_iterator)
+    print('len:', length)
+    l = length // 1
+    metric_epoch = {}
+    steps = config.epoch
+    iter_num = 0
+    metric_epoch['loss'] = []
+    if model.metric != None:
+        metric_name = f"{model.metric.__class__.__name__}"
+        metric_epoch[f"{model.metric.__class__.__name__}"] = []
+    if model.metric_1 != None:
+        metric_1_name = f"{model.metric_1.__class__.__name__}"
+        metric_epoch[f"{model.metric_1.__class__.__name__}"] = []
+    compress = config.reg
+    # Eval Loop
+    def eval_loop():
+        metric_batch_test = {}
+        metric_batch_test['loss'] = []
+        if model.metric != None:
+            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
+        if config.dataset == 'stsb' or config.dataset == 'cola':
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                model.eval()
+                model.zero_grad()
+                if config.dataset == 'stsb':
+                    ref = np.array([])
+                    pre = np.array([])
+                else:
+                    ref = np.array([], dtype=np.float64)
+                    pre = np.array([], dtype=np.float64)
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    if "labels" in inputs:
+                        labels = inputs.pop("labels")
+                    outputs = model(**inputs)
+                    if config.dataset == 'stsb':
+                        predictions = outputs.logits.squeeze()
+                    else:
+                        predictions = outputs['logits']
+                    if config.dataset == 'stsb':
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
+                    else:
+                        for i in range(predictions.shape[0]):
+                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+
+                if config.dataset == 'stsb':
+                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
+                else:
+                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
+        else:
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
+                    metric_batch_test['loss'].append(step_loss.item())
+                    if model.metric != None:
+                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(
+                            list(step_metric.values())[0])
+                    if model.metric_1 != None:
+                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
+                            list(step_metric_1.values())[0])
+                    if step == len(eval_epoch_iterator) - 1:
+                        log.info('test---')
+                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
+                        if model.metric != None:
+                            s += ','
+                            s += (
+                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
+                        if model.metric_1 != None:
+                            s += ','
+                            s += (
+                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
+                        log.info(s)
+
+    loss_gap = [[] for _ in range(len(train_dataloader1))]
+    def loss_particles(model_lp,e,loss_gap):
+        loss_g_before = {}
+        iterator = iter(train_dataloader1)
+        trange = range(len(train_dataloader1))
+        before = tqdm(total=len(train_dataloader1), desc=f"lp before{e}")
+        for step in trange:
+            before.update(1)
+            inputs = prepare_inputs(next(iterator), device)
+            model_lp.eval()
+            step_idx = inputs["idx"]
+            loss= get_loss(model_lp, inputs)
+            for i in range(len(step_idx)):
+                loss_g_before[step_idx[i].item()] = loss.item()
+        before.close()
+
+        with torch.no_grad():
+            for name, module in model_lp.named_modules():
+                if isinstance(module, (torch.nn.Linear)):
+                    r = 1 - e
+                    module.weight.data = r * module.weight.data
+
+        loss_g_after = {}
+        iterator = iter(train_dataloader1)
+        trange = range(len(train_dataloader1))
+        after = tqdm(total=len(train_dataloader1), desc=f"lp after{e}")
+        for step in trange:
+            after.update(1)
+            inputs = prepare_inputs(next(iterator), device)
+            model_lp.eval()
+            step_idx = inputs["idx"]
+            loss = get_loss(model_lp, inputs)
+            for i in range(len(step_idx)):
+                loss_g_after[step_idx[i].item()] = loss.item()
+        after.close()
+
+        keys = sorted(loss_g_before.keys())
+        loss_g_gap = {key: loss_g_after[key] - loss_g_before[key] for key in keys}
+        for key in keys:
+            loss_gap[key].append(loss_g_gap[key])
+        del model_lp
+        # print(loss_gap)
+
+    model_checkpoint = config.model
+    task = config.dataset
+    k_0=1e-08
+    k = [i * k_0 for i in range(2, 16)]
+    for k_i in k:
+        model_lp=load_model(model_checkpoint,task,device)
+        model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
+        model_lp.to(next(model.parameters()).device)
+        loss_particles(model_lp, k_i, loss_gap)
+        del model_lp
 
     count_lp = len(loss_gap[0])
     print(count_lp)
