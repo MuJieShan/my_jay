@@ -289,7 +289,15 @@ def get_dataloader3(task: str, model_checkpoint: str, dataloader_drop_last: bool
                                        'attention_mask': train_dataset['attention_mask'],
                                        'token_type_ids': train_dataset['token_type_ids'],
                                        'idx': idx})
-
+    train_dataloader = DataLoader(
+        train_dataset,
+        shuffle=shuffle,
+        batch_size=batch_size,
+        collate_fn=data_collator,
+        # drop_last=dataloader_drop_last,
+        num_workers=dataloader_num_workers,
+        pin_memory=dataloader_pin_memory
+    )
     train_dataloader1 = DataLoader(
         train_dataset,
         shuffle=False,
@@ -311,4 +319,4 @@ def get_dataloader3(task: str, model_checkpoint: str, dataloader_drop_last: bool
         pin_memory=dataloader_pin_memory,
     )
 
-    return train_dataloader1, validation_dataloader, train_dataset
+    return train_dataloader, train_dataloader1, validation_dataloader

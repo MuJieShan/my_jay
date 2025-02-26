@@ -21,7 +21,8 @@ def main():
     lr = config.learning_rate
     # Load DataLoader
     print(f"\nLoading data...")
-    train_epoch_iterator, eval_epoch_iterator,train_dataloader1 = get_dataloader3(task, model_checkpoint, shuffle=True,batch_size=batch_size)
+    # train_epoch_iterator, eval_epoch_iterator,train_dataloader1 = get_dataloader3(task, model_checkpoint, shuffle=True,batch_size=batch_size)
+    train_epoch_iterator, train_dataloader1,eval_epoch_iterator= get_dataloader3(task, model_checkpoint, shuffle=True,batch_size=batch_size)
 
     # Load Pre-trained Model
     print(f"\nLoading pre-trained BERT model \"{model_checkpoint}\"")
