@@ -1,4 +1,4 @@
-datasets
+datasets==2.18.0
 evaluate
 transformers==4.46.3
 easydict
