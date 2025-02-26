@@ -21,7 +21,6 @@ from tqdm import tqdm
 import copy
 from dataPruner import *
 import operator
-
 def get_loss(model, inputs):
     # layer_sums = 0
     # for (name, module) in model.named_modules():
