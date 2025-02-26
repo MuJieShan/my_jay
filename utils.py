@@ -2089,7 +2089,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
     model_checkpoint = config.model
     task = config.dataset
     k_0=1e-08
-    k = [2e-08,3e-08,4e-08,5e-08,6e-08,7e-08,8e-08,9e-08,1e-07,2e-07,3e-07,4e-07,5e-07,6e-07]
+    k = [2e-08,3e-08,4e-08,5e-08,6e-08,7e-08,8e-08,9e-08]
     for k_i in k:
         model_lp=load_model(model_checkpoint,task,device)
         model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
