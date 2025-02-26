@@ -32,8 +32,8 @@ def get_loss(model, inputs):
     #         r = 5e-4
     #         # r= reg[name]
     #         layer_sums = layer_sums + 0.5 * r * layer_sum.item()
-    if "label" in inputs:
-        labels = inputs.pop("label")
+    if "labels" in inputs:
+        labels = inputs.pop("labels")
     if "idx" in inputs:
         idx = inputs.pop("idx")
     outputs = model(**inputs)
@@ -2053,7 +2053,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
             inputs = prepare_inputs(next(iterator), device)
             model_lp.eval()
             step_idx = inputs["idx"]
-            print(inputs.keys())
+            # print(inputs.keys())
             loss= get_loss(model_lp, inputs)
             for i in range(len(step_idx)):
                 loss_g_before[step_idx[i].item()] = loss.item()
