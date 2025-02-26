@@ -32,7 +32,7 @@ def main():
     print('train data len:', len(train_epoch_iterator))
     # train_eval_loop(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
     # train_ft_loop(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
-    train_lp_loop1(config, model, train_epoch_iterator, train_dataloader1,eval_epoch_iterator, optimizer, device, log)
+    train_lp_loop(config, model, train_epoch_iterator, train_dataloader1,eval_epoch_iterator, optimizer, device, log)
     end_time = time.time()
     total_time = end_time - start_time
     s = f'Total training time: {total_time}'
