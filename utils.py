@@ -2103,7 +2103,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
     count_lp = len(loss_gap[0])
     print(count_lp)
     loss_g_file = f"lp_{config['model']}_{config['dataset']}_{config['seed']}_{config['reg']}_{config['batchsize']}.csv"
-    df = pd.DataFrame(loss_gap,columns=[i for i in range(count_lp)])
+    df = pd.DataFrame(loss_gap,columns=[i for i in k])
     df.to_csv(loss_g_file, index=False)
     name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.seed}.csv"
     df = pd.DataFrame(train_eval[name1])
