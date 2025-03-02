@@ -1,4 +1,4 @@
-# from transformers import pipeline
+from transformers import pipeline,AutoModelForSequenceClassification
 a=1.0e-7
 b=1.0e-8
 c=a+2*b

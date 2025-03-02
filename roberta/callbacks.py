@@ -76,6 +76,7 @@ class ScoreCallback(TrainerCallback):
         self.collate_fn = collate_fn
         self.scores = {}
         self._set_compute_fn()
+        self.weight = []
 
     def _set_compute_fn(self):
         if self.method == "loss":
@@ -158,4 +159,20 @@ class TimeCallback(TrainerCallback):
         with open(f"{args.output_dir}/time.txt", "r") as fp:
             times = [tuple(f.strip().split("\t")) for f in fp.readlines()]
         self.total_time = sum([float(t) for _, t, _ in times])
+
+class WeightCallback(TrainerCallback):
+    """
+    General model weight norm per epoch.
+    """
+    def on_epoch_end(self, args, state, control,model=None, **kwargs):
+        print("COMPUTING WEIGHT NORM")
+        model.to(args.device)
+        WeightNorm = 0
+        with torch.no_grad():
+            for name, module in model.named_modules():
+                if isinstance(module, torch.nn.Linear):
+                    sum = torch.sum(torch.abs(module.weight.data)).item()
+                    WeightNorm += sum
+        with open(f"{args.output_dir}/weight.tsv", "a") as fp:
+            fp.write("%f\t%f\n" % (state.epoch, WeightNorm))
 
