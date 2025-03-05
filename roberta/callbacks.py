@@ -160,6 +160,7 @@ class TimeCallback(TrainerCallback):
             times = [tuple(f.strip().split("\t")) for f in fp.readlines()]
         self.total_time = sum([float(t) for _, t, _ in times])
 
+
 class WeightCallback(TrainerCallback):
     """
     General model weight norm per epoch.

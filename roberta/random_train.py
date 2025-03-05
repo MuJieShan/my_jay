@@ -1,7 +1,7 @@
 import torch
 from dataloader import get_dataloader,get_dataloader1
 from model_loader import get_model_and_tokenizer
-from roberta.callbacks import WeightCallback
+from callbacks import *
 from utils import *
 from customTrainer import *
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -88,6 +88,7 @@ def main():
         data_collator=data_collator,
         compute_metrics=lambda eval_pred: compute_metrics(eval_pred, task),
     )
+
     weight_callback = WeightCallback()
     trainer.add_callback(weight_callback)
     trainer.train()
@@ -100,7 +101,13 @@ def main():
 
     import glob, shutil
     file = training_args.output_dir
-    shutil.rmtree(file)
+    for item in os.listdir(file):
+        item_path = os.path.join(file, item)
+        print(item_path)
+        if os.path.isdir(item_path):
+            shutil.rmtree(item_path)
+        elif not item.endswith(".tsv"):
+            os.remove(item_path)
     print(f"Deleted file: {file}")
     checkpoint_files = glob.glob(os.path.join(training_args.output_dir, "checkpoint-*"))
     if remain_loss:

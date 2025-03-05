@@ -549,7 +549,6 @@ def getOneNormofModel(model):
                 OneNorm += sum
     return  OneNorm
 
-
 def train_eval_loop(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
     """
     example : !python train.py --dataset mrpc --seed 3404 --epoch 10 --reg 0.001 --reg_1 0.05
@@ -1952,7 +1951,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
     计算每个样本的损失颗粒
     每个惩罚系数r(2e-8)统计一次
     目的：观察是否真的存在颗粒裂解的情况
-    example : !python ../train.py --dataset mrpc --seed 3404 --epoch 1 --reg 5e-08 --weight_decay 0.001 --model bert-base-uncased --batchsize 32
+    example : !python ../train.py --dataset sst2 --seed 3404 --epoch0 1 --reg 5e-08 --weight_decay 0.001 --model bert-base-uncased --batchsize 32
     """
     name1 = f"{model.metric.__class__.__name__}"
     train_eval = {name1: []}
@@ -1964,7 +1963,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
     print('len:', length)
     l = length // 1
     metric_epoch = {}
-    steps = config.epoch
+    steps = config.epoch0
     iter_num = 0
     metric_epoch['loss'] = []
     if model.metric != None:
@@ -2042,6 +2041,50 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
                                 f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
                         log.info(s)
 
+    print("initial training:")
+    for epoch in range(steps):
+        metric_batch = {}
+        metric_batch['loss'] = []
+        if model.metric != None:
+            metric_batch[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
+        iterator = iter(train_epoch_iterator)
+        trange = range(len(train_epoch_iterator))
+        for step in trange:
+            inputs = prepare_inputs(next(iterator), device)
+            model.train()
+            optimizer.zero_grad()
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs)
+            step_loss.backward()
+            train_eval[name1].append(step_metric)
+            if step_metric_1:
+                train_eval[name2].append(step_metric_1)
+
+            optimizer.step()
+            metric_batch['loss'].append(step_loss.item())
+            if model.metric != None:
+                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
+            if model.metric_1 != None:
+                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
+
+            if step % l == 0:
+                s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
+                if model.metric != None:
+                    s += ','
+                    s += (
+                        f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
+                if model.metric_1 != None:
+                    s += ','
+                    s += (
+                        f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
+                log.info(s)
+                eval_loop()
+            iter_num += 1
+        print(f"********微调epoch{epoch}********")
+        eval_loop()
+
+    print("computing loss particles:")
     loss_gap = [[] for _ in range(len(train_dataloader1))]
     def loss_particles(model_lp,e,loss_gap):
         loss_g_before = {}

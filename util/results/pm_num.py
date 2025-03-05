@@ -295,6 +295,10 @@ def CrossEntropyLoss():
     #                 [0.4050, 0.3642],
     #                 [0.4011, 0.3595]])
     labels = torch.tensor([0, 1, 1, 1])
+
+    # labels = nn.functional.pad(labels, (0, 1), value=ignore_index)
+    # shift_labels = labels[..., 1:].contiguous()
+
     logits = torch.tensor([[0.3900, 0.3587],
                            [0.4072, 0.3517],
                            [0.3869, 0.3479],

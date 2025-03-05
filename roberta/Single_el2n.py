@@ -161,15 +161,23 @@ def main():
         data_collator=data_collator,
         compute_metrics=lambda eval_pred: compute_metrics(eval_pred, task),
     )
+    weight_callback = WeightCallback()
+    trainer.add_callback(weight_callback)
     trainer.train()
     print("结束训练")
     s = f'{trainer.evaluate(eval_dataset)}'
     print(s)
     log.info(f'\n{s}\n')
 
-    import shutil
+    import glob, shutil
     file = training_args.output_dir
-    shutil.rmtree(file)
+    for item in os.listdir(file):
+        item_path = os.path.join(file, item)
+        print(item_path)
+        if os.path.isdir(item_path):
+            shutil.rmtree(item_path)
+        elif not item.endswith(".tsv"):
+            os.remove(item_path)
     print(f"Deleted file: {file}")
     if remain_loss:
         loss_history = trainer.get_training_loss()

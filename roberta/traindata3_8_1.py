@@ -3,6 +3,7 @@ from dataloader import get_dataloader,get_dataloader1
 from model_loader import get_model_and_tokenizer
 from utils import *
 from customTrainer import *
+from callbacks import *
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from transformers.data.data_collator import DataCollatorWithPadding
 from transformers import RobertaTokenizerFast, RobertaForSequenceClassification, Trainer, TrainingArguments,glue_compute_metrics
@@ -296,6 +297,8 @@ def main():
         data_collator=data_collator,
         compute_metrics = lambda eval_pred: compute_metrics(eval_pred, task),
     )
+    weight_callback = WeightCallback()
+    trainer.add_callback(weight_callback)
     trainer.train()
     print("结束训练")
     s=f'{trainer.evaluate(eval_dataset)}'
