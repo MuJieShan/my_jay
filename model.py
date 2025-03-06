@@ -1,7 +1,8 @@
 import torch
 from transformers import BertModel,BertForQuestionAnswering,BertForSequenceClassification
 from transformers import AutoTokenizer, AutoModel
-from datasets import load_metric
+# from datasets import load_metric
+from evaluate import load as load_metric
 from transformers import RobertaModel, RobertaTokenizer
 
 def get_metrics(task:str):
@@ -18,8 +19,8 @@ def get_metrics(task:str):
     "wnli": ["accuracy", None],
     'squad':['exact_match','f1']
     }
-    metric = load_metric(task_to_metric[task][0],trust_remote_code=True)
-    metric_1 = load_metric(task_to_metric[task][1],trust_remote_code=True) if task_to_metric[task][1] else None
+    metric = load_metric(task_to_metric[task][0])
+    metric_1 = load_metric(task_to_metric[task][1]) if task_to_metric[task][1] else None
     return metric, metric_1
 
 def compute_metrics(predictions, references, metric):
