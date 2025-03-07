@@ -116,7 +116,7 @@ def main():
         common_keys = [key for key in loss_after if key in loss_before]
         loss_gap = {key: index for index, key in enumerate(common_keys)}
     else:
-        loss_gap = {key: torch.abs(loss_after[key] - loss_before[key]).item() for key in loss_before}
+        loss_gap = {key: torch.abs(loss_before[key]).item() for key in loss_before}
     iterator = iter(train_epoch_iterator)
     trange = range(len(train_epoch_iterator))
     print(len(train_epoch_iterator))
