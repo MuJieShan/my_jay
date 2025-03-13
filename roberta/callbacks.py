@@ -177,3 +177,6 @@ class WeightCallback(TrainerCallback):
         with open(f"{args.output_dir}/weight.tsv", "a") as fp:
             fp.write("%f\t%f\n" % (state.epoch, WeightNorm))
 
+
+
+

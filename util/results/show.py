@@ -554,7 +554,7 @@ def show_loss_gap_8(filenamelist):
             if k ==6 or k == 7:
                 axs[i, j].set_xlabel('Batch', fontsize=16)
             if k in [0,2,4,6]:
-                axs[i, j].set_ylabel(r"$\Delta L$", fontsize=16)
+                axs[i, j].set_ylabel(0, fontsize=16)
             k += 1
     # 关闭网格线
     plt.grid(False)

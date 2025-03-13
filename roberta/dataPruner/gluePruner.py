@@ -34,6 +34,10 @@ class GLUEPruner():
         self.cur_index = remain_indices
         self.iteration += 1
 
+    def lp_prune(self,index):
+        self.cur_index = index
+        self.iteration += 1
+
     def prune(self):
         if self.iteration==0:
             remain_indices=np.arange(len(self.dataset))

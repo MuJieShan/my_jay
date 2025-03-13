@@ -96,10 +96,11 @@ def init_config():
     parser.add_argument('--pruneFlag', type=str, default="up", help='choose one:[up,down]')
     parser.add_argument('--method', type=str, default="el2n", help='choose one:["gradn", "el2n", "loss"]')
     parser.add_argument('--optim', type=str, default="adamw_torch", help='choose one:["adamw_torch", "sgd", "lion_32bit"]')
+    parser.add_argument('--dynamic', type=str, default="False")
     args = parser.parse_args()
     base_config = {'dataset': "mrpc",'model': "bert-base-uncased",'state': "ft",
                    'batchsize': 32, 'epoch': 10,'epoch0': 1,'step':0, 'learning_rate': 2e-5, 'target_ratio': 0.50,
-                   'seed': 3404, 'prune_batchsize': 32, 'reg': 0.05, 'weight_decay': 0.001, 'remain_loss': 0, 'shuffle': "True",'pruneFlag': "up",'method': "el2n",'optim': "adamw_torch"}
+                   'seed': 3404, 'prune_batchsize': 32, 'reg': 0.05, 'weight_decay': 0.001, 'remain_loss': 0, 'shuffle': "True",'pruneFlag': "up",'method': "el2n",'optim': "adamw_torch", 'dynamin': "False"}
     config = edict(base_config)
     for key, value in vars(args).items():
         if value is not None:
@@ -111,6 +112,10 @@ def init_config():
         config.shuffle = False
     else:
         config.shuffle = True
+    if config.dynamic == "False":
+        config.dynamic = False
+    else:
+        config.dynamic = True
     return config
 
 

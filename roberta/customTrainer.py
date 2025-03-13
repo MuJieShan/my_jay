@@ -29,20 +29,32 @@ def compute_metrics(eval_pred, task):
         predictions = np.argmax(predictions, axis=1)
         results = metric.compute(predictions=predictions, references=labels)
     return results
+def prepare_inputs(inputs, device):
+    """
+    Prepare :obj:`inputs` before feeding them to the model, converting them to tensors if they are not already and
+    handling potential state.
+    """
+    for k, v in inputs.items():
+        if isinstance(v, torch.Tensor):
+            inputs[k] = v.to(device)
+    return inputs
 
 class GlueTrainingArguments(TrainingArguments):
-    def __init__(self,task_name: str = '', state: str = '', reg: int = 1, shuffle:bool =True, remain_loss:bool = False,**kwargs):
+    def __init__(self,dynamic:bool =False,model_name:str ='', task_name: str = '', state: str = '', reg: int = 1, shuffle:bool =True, remain_loss:bool = False,**kwargs):
         super().__init__(**kwargs)
         self.task_name = task_name
         self.state = state
         self.reg = reg
         self.shuffle = shuffle
         self.remain_loss = remain_loss
+        self.dynamic = dynamic
+        self.model_name = model_name
 
 class GlueTrainer(Trainer):
-    def __init__(self, compute_loss_func = None,*args, **kwargs):
+    def __init__(self, compute_loss_func = None,pruner = None,*args, **kwargs):
         super().__init__(*args, **kwargs)
         self.compute_loss_func = compute_loss_func
+        self.pruner = pruner
         self.loss_history = []
     def get_training_loss(self):
         return self.loss_history
@@ -59,8 +71,131 @@ class GlueTrainer(Trainer):
             import datasets
         if self.train_dataset is None:
             raise ValueError("Trainer: training requires a train_dataset.")
+        # if self.args.dynamic:
+        #     from model_loader import get_model_and_tokenizer
+        #     import operator
+        #     model_checkpoint = self.args.model_name
+        #     task = self.args.task_name
+        #     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        #     compress = self.args.reg
+        #     prune_model, _ = get_model_and_tokenizer(model_checkpoint, task, device)
+        #     train_epoch_iterator = DataLoader(
+        #         self.train_dataset,
+        #         shuffle=False,
+        #         batch_size=1,
+        #         collate_fn=self.data_collator,
+        #         num_workers=self.args.dataloader_num_workers,
+        #         pin_memory=self.args.dataloader_pin_memory
+        #     )
+        #     loss_before = {}
+        #     loss_after = {}
+        #     iterator = iter(train_epoch_iterator)
+        #     trange = range(len(train_epoch_iterator))
+        #
+        #     before = tqdm(total=len(train_epoch_iterator), desc=f"lp before")
+        #     for step in trange:
+        #         before.update(1)
+        #         inputs = prepare_inputs(next(iterator), device)
+        #         prune_model.eval()
+        #         step_idx = inputs["idx"]
+        #         loss = self.compute_loss(prune_model, inputs)
+        #         for i in range(len(step_idx)):
+        #             loss_before[step_idx[i].item()] = loss.data
+        #     before.close()
+        #     with torch.no_grad():
+        #         for name, module in prune_model.named_modules():
+        #             if isinstance(module, torch.nn.Linear):
+        #                 r = 1 - compress
+        #                 module.weight.data = r * module.weight.data
+        #     iterator = iter(train_epoch_iterator)
+        #     trange = range(len(train_epoch_iterator))
+        #     after = tqdm(total=len(train_epoch_iterator), desc=f"lp after")
+        #     for step in trange:
+        #         after.update(1)
+        #         inputs = prepare_inputs(next(iterator), device)
+        #         prune_model.eval()
+        #         step_idx = inputs["idx"]
+        #         loss = self.compute_loss(prune_model, inputs)
+        #         for i in range(len(step_idx)):
+        #             loss_after[step_idx[i].item()] = loss.data
+        #     after.close()
+        #     loss_gap = {key: torch.abs(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
+        #     iterator = iter(train_epoch_iterator)
+        #     trange = range(len(train_epoch_iterator))
+        #     print(len(train_epoch_iterator))
+        #     for step in trange:
+        #         inputs = prepare_inputs(next(iterator), device)
+        #         step_size = len(inputs['idx'])
+        #         step_score = torch.randint(1, 1001, (step_size,))
+        #         get_score = operator.itemgetter(*inputs['idx'].tolist())
+        #         step_score = torch.tensor(get_score(loss_gap))
+        #         self.pruner.update(step_score, inputs['idx'])
+        #     print(f'修剪前：{len(self.pruner.cur_index)}')
+        #     self.pruner.prune()
+        #     print(f'修剪后：{len(self.pruner.cur_index)}')
+        #     train_dataset = self.pruner.get_pruned_train_dataset()
+        #     del prune_model
+        if self.args.dynamic:
+            from model_loader import get_model_and_tokenizer
+            import operator
+            model_checkpoint = self.args.model_name
+            task = self.args.task_name
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            compress = self.args.reg
+            prune_model, _ = get_model_and_tokenizer(model_checkpoint, task, device)
+            train_epoch_iterator = DataLoader(
+                self.train_dataset,
+                shuffle=False,
+                batch_size=1,
+                collate_fn=self.data_collator,
+                num_workers=self.args.dataloader_num_workers,
+                pin_memory=self.args.dataloader_pin_memory
+            )
+            loss_before = {}
+            loss_after = {}
+            iterator = iter(train_epoch_iterator)
+            trange = range(len(train_epoch_iterator))
 
-        train_dataset = self.train_dataset
+            before = tqdm(total=len(train_epoch_iterator), desc=f"lp before")
+            for step in trange:
+                before.update(1)
+                inputs = prepare_inputs(next(iterator), device)
+                prune_model.eval()
+                step_idx = inputs["idx"]
+                loss = self.compute_loss(prune_model, inputs)
+                for i in range(len(step_idx)):
+                    loss_before[step_idx[i].item()] = loss.data
+            before.close()
+            with torch.no_grad():
+                for name, module in prune_model.named_modules():
+                    if isinstance(module, torch.nn.Linear):
+                        r = 1 - compress
+                        module.weight.data = r * module.weight.data
+            iterator = iter(train_epoch_iterator)
+            trange = range(len(train_epoch_iterator))
+            after = tqdm(total=len(train_epoch_iterator), desc=f"lp after")
+            for step in trange:
+                after.update(1)
+                inputs = prepare_inputs(next(iterator), device)
+                prune_model.eval()
+                step_idx = inputs["idx"]
+                loss = self.compute_loss(prune_model, inputs)
+                for i in range(len(step_idx)):
+                    loss_after[step_idx[i].item()] = loss.data
+            after.close()
+            loss_gap = {key: torch.abs(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
+            iterator = iter(train_epoch_iterator)
+            trange = range(len(train_epoch_iterator))
+            print(len(train_epoch_iterator))
+            index = np.array([key for key, value in loss_gap.items() if value.item() != 0])
+            print(f'修剪前：{len(self.pruner.cur_index)}')
+            self.pruner.lp_prune(index)
+            print(f'修剪后：{len(self.pruner.cur_index)}')
+            train_dataset = self.pruner.get_pruned_train_dataset()
+            del prune_model
+        else:
+            train_dataset = self.train_dataset
+
         data_collator = self.data_collator
         if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
             train_dataset = self._remove_unused_columns(train_dataset, description="training")
@@ -82,6 +217,8 @@ class GlueTrainer(Trainer):
             labels = inputs.pop("labels")
         else:
             labels = None
+        if "idx" in inputs:
+            idx = inputs.pop("idx")
         outputs = model(**inputs)
         if labels is not None:
             loss = self.compute_loss_func(outputs, labels)
