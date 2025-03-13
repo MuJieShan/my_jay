@@ -116,4 +116,4 @@ if __name__ == "__main__":
     #剪枝标准：
             #模型对样本的损失颗粒的绝对值
     #从头开始训练，动态选择
-    # python ../traindata14_0.py --state ft --dataset mrpc --seed 3404 --reg 5e-8 --weight_decay 0.0 --epoch 10 --epoch0 1 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --pruneFlag up --optim adamw_torch --dynamic True
+    # python ../traindata14_0.py --state ft --dataset mrpc --seed 3404 --reg 5e-8 --weight_decay 0.0 --epoch 2 --epoch0 1 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --pruneFlag up --optim adamw_torch --dynamic True
