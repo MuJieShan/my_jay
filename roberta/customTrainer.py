@@ -188,6 +188,7 @@ class GlueTrainer(Trainer):
             trange = range(len(train_epoch_iterator))
             print(len(train_epoch_iterator))
             index = np.array([key for key, value in loss_gap.items() if value != 0])
+
             print(f'修剪前：{len(self.pruner.cur_index)}')
             self.pruner.lp_prune(index)
             print(f'修剪后：{len(self.pruner.cur_index)}')
