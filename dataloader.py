@@ -221,6 +221,7 @@ def get_dataloader2(task: str, model_checkpoint: str, dataloader_drop_last: bool
         num_workers=dataloader_num_workers,
         pin_memory=dataloader_pin_memory
     )
+
     if only_train:
         return train_dataloader
     validation_dataloader = DataLoader(

@@ -1655,7 +1655,7 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
 def train_ft_loop4(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log, trainset):
     """
     每个epoch后根据损失颗粒逐渐减少选择的数据
-    example : !python ../../traindata.py --dataset mrpc --seed 3404 --epoch 10 --reg 5e-7 --weight_decay 0.001 --target_ratio 0.5
+    example : !python ../../traindata.py --dataset mrpc --seed 3404 --epoch 10 --reg 5e-7 --weight_decay 0.001 --target_ratio 0.5 --model bert-base-uncased --batchsize 32
     """
     loss_history = []
     name1 = f"{model.metric.__class__.__name__}"
