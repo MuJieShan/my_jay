@@ -212,7 +212,6 @@ def get_dataloader2(task: str, model_checkpoint: str, dataloader_drop_last: bool
                                        'attention_mask': train_dataset['attention_mask'],
                                        'token_type_ids': train_dataset['token_type_ids'],
                                        'idx': list(range(len(train_dataset)))})
-
     train_dataloader = DataLoader(
         train_dataset,
         shuffle=False,
