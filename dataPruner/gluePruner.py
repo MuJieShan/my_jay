@@ -25,7 +25,10 @@ class GLUEPruner():
         self.scores[self.cur_batch_index.cpu()]=s
         # self.scores[self.cur_batch_index.cpu()] = s
 
-
+    def update_keep_ratio(self,total_iteration):
+        keep_ratio=1-self.iteration/total_iteration
+        if keep_ratio > 0.1:
+            self.keep_ratio = keep_ratio
 
     def prune(self):
         if self.iteration==0:
@@ -79,6 +82,21 @@ def get_pruned_dataloader(config,dataset,sampler):
         dataset,
         shuffle=False,
         batch_size=batch_size,
+        collate_fn=data_collator,
+        # drop_last=True,
+        num_workers=0,
+        pin_memory=True, sampler=sampler
+    )
+    return train_dataloader
+def get_pruned_dataloader_1(config,dataset,sampler):
+    model_checkpoint = "bert-base-uncased"
+    batch_size = 1
+    tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
+    data_collator = DataCollatorWithPadding(tokenizer)
+    train_dataloader = DataLoader(
+        dataset,
+        shuffle=False,
+        batch_size=1,
         collate_fn=data_collator,
         # drop_last=True,
         num_workers=0,

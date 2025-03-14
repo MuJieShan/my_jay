@@ -31,7 +31,9 @@ def main():
     # optimizer1 = create_optimizer(model1, learning_rate=lr,config=config,batch_num=len(train_epoch_iterator))
     print('train data len:', len(train_epoch_iterator))
     # train_eval_loop(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
-    train_ft_loop2(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log,trainset)
+    # train_ft_loop2(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log,trainset)
+    # train_ft_loop3(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log,trainset)
+    train_ft_loop4(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log,trainset)
     end_time = time.time()
     total_time = end_time - start_time
     s = f'Total training time: {total_time}'

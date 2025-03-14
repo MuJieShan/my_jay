@@ -80,7 +80,6 @@ class GLUEPruner():
     def get_sampler(self):
         sampler = SubsetRandomSampler(self.cur_index)
         return sampler
-
     @property
     def save_ratio(self):
         return (self.num_pruned_samples)/(self.iteration*len(self.dataset))

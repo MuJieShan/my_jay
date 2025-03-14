@@ -317,8 +317,10 @@ def CrossEntropyLoss():
 
     #等价于
     # 对比softmax与log的结合与nn.LogSoftmaxloss(负对数似然损失)的输出结果，发现两者是一致的。
-    logsoftmax_func = nn.LogSoftmax(dim=1)
+    logsoftmax_func = nn.LogSoftmax(dim=-1)
     logsoftmax_output = logsoftmax_func(logits)
+    losses = -logsoftmax_output[np.arange(4), labels]
+    nlloss_output = torch.mean(losses)
     print('logsoftmax_output:\n', logsoftmax_output)
 
     # softmax_func = nn.Softmax(dim=1)
@@ -326,14 +328,16 @@ def CrossEntropyLoss():
     # logsoftmax_output = torch.log(soft_output)
     # print('logsoftmax_output:\n', logsoftmax_output)
 
-    nlloss_output = torch.mean(-logsoftmax_output[np.arange(4),labels])
+
+    print(sum(losses).item()/len(losses))
+    print(nlloss_output.item())
     nlloss_output1 = torch.mean(-logsoftmax_output[np.arange(4),1-labels])
 
     # pytorch中关于NLLLoss的默认参数配置为：reducetion=True、size_average=True
     nllloss_func = nn.NLLLoss()
     # nlloss_output = nllloss_func(logsoftmax_output, labels)
     # nlloss_output1 = nllloss_func(logsoftmax_output, 1-labels)
-    print('nlloss_output:\n', nlloss_output.item(),nlloss_output1.item(),((nlloss_output+nlloss_output1)/2.0).item(),torch.mean(torch.tensor([nlloss_output,nlloss_output1])).item(),torch.mean(-logsoftmax_output).item())
+    # print('nlloss_output:\n', nlloss_output.item(),nlloss_output1.item(),((nlloss_output+nlloss_output1)/2.0).item(),torch.mean(torch.tensor([nlloss_output,nlloss_output1])).item(),torch.mean(-logsoftmax_output).item())
 
 def show_loss_gap_2(filenamelist):
     df = []
@@ -393,3 +397,4 @@ if __name__ == '__main__':
 
     # calculate_integer_ratio(csv_file_path)
     # print(2.9802322387695312e-08/1.862645149230957e-09)
+    CrossEntropyLoss()
