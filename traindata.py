@@ -22,7 +22,6 @@ def main():
     # Load DataLoader
     print(f"\nLoading data...")
     train_epoch_iterator, eval_epoch_iterator ,trainset= get_dataloader2(task, model_checkpoint, shuffle=True,batch_size=batch_size)
-
     # Load Pre-trained Model
     print(f"\nLoading pre-trained BERT model \"{model_checkpoint}\"")
     model=load_model(model_checkpoint,task,device)
@@ -32,8 +31,8 @@ def main():
     print('train data len:', len(train_epoch_iterator))
     # train_eval_loop(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
     # train_ft_loop2(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log,trainset)
-    # train_ft_loop3(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log,trainset)
-    train_ft_loop4(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log,trainset)
+    train_ft_loop3(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log,trainset)
+    # train_ft_loop4(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log,trainset)
     end_time = time.time()
     total_time = end_time - start_time
     s = f'Total training time: {total_time}'

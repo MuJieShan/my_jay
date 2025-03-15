@@ -1437,11 +1437,11 @@ def  train_ft_loop2(config, model, train_epoch_iterator,eval_epoch_iterator, opt
     #     name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.reg_1}_{config.seed}.csv"
     #     df = pd.DataFrame(train_eval[name2])
     #     df.to_csv(name2_file, index=False)
-#动态数据剪枝，每个epoch之后选择50%
+#动态数据剪枝，每2个epoch之后选择50%
 def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log,trainset):
     """
     每个epoch后根据损失颗粒选择50%
-    example : !python ../../traindata.py --dataset mrpc --seed 3404 --epoch 10 --reg 5e-7 --weight_decay 0.001 --target_ratio 0.5
+    example : !python traindata.py --dataset mrpc --seed 3404 --epoch 10 --reg 5e-7 --weight_decay 0.001 --target_ratio 0.5
     """
     loss_history = []
     name1 = f"{model.metric.__class__.__name__}"
@@ -1586,13 +1586,14 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
             get_score = operator.itemgetter(*inputs['idx'].tolist())
             step_score = torch.tensor(get_score(loss_g_gap))
             pruner.update(step_score, inputs['idx'])
-        print(f'修剪前：{len(pruner.cur_index)}')
+        if e!=0:
+            print(f'修剪前：{len(pruner.cur_index)}')
         pruner.prune()
         print(f'修剪后：{len(pruner.cur_index)}')
         sampler = pruner.get_sampler()
         return get_pruned_dataloader(config, trainset, sampler)
 
-
+    train_epoch_iterator2 = None
     print(f"开始训练：数据：{len(train_epoch_iterator)}")
     for epoch in range(steps):
         metric_batch = {}
@@ -1601,11 +1602,12 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
             metric_batch[f"{model.metric.__class__.__name__}"] = []
         if model.metric_1 != None:
             metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-        model_lp = load_model(model_checkpoint, task, device)
-        model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
-        model_lp.to(next(model.parameters()).device)
-        train_epoch_iterator2 = get_epoch_dataloader(model_lp, data_p, epoch)
-        del model_lp
+        if epoch%2==0:
+            model_lp = load_model(model_checkpoint, task, device)
+            model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
+            model_lp.to(next(model.parameters()).device)
+            train_epoch_iterator2 = get_epoch_dataloader(model_lp, data_p, 0)
+            del model_lp
         iterator = iter(train_epoch_iterator2)
         trange = range(len(train_epoch_iterator2))
         epoch_length = tqdm(total=len(train_epoch_iterator2), desc=f"epoch {epoch}")
@@ -1650,6 +1652,8 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
         epoch_length.close()
         print(f"********微调epoch{epoch}********")
         eval_loop()
+    s = f'50% per epoch,initial 100%'
+    log.info(s)
 
 # 动态数据剪枝，每个epoch之后选择的数据逐渐减少
 def train_ft_loop4(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log, trainset):
@@ -1809,6 +1813,7 @@ def train_ft_loop4(config, model, train_epoch_iterator, eval_epoch_iterator, opt
             sampler = pruner.get_sampler()
             return get_pruned_dataloader(config, trainset, sampler)
     print(f"开始训练：数据：{len(train_epoch_iterator)}")
+
     for epoch in range(steps):
         metric_batch = {}
         metric_batch['loss'] = []
@@ -1865,6 +1870,8 @@ def train_ft_loop4(config, model, train_epoch_iterator, eval_epoch_iterator, opt
         epoch_length.close()
         print(f"********微调epoch{epoch}********")
         eval_loop()
+    s = f'50% per epoch,initial 100%'
+    log.info(s)
 # loss_file = f"loss_ft_{config.dataset}_{config.reg}_{config.seed}.csv"
 # df = pd.DataFrame(loss_history)
 # df.to_csv(loss_file, index=False)

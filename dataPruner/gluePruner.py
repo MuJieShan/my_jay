@@ -6,7 +6,6 @@ import torch
 from transformers import BertTokenizer,AutoTokenizer
 from torch.utils.data import SubsetRandomSampler
 from datasets import Dataset
-
 class GLUEPruner():
     def __init__(self, dataset,ratio = 0.5):
         self.dataset = dataset
