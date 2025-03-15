@@ -1463,7 +1463,6 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
     compress = config.reg
     compress_ft = config.weight_decay
 
-
     # Eval Loop
     def eval_loop():
         metric_batch_test = {}
