@@ -74,6 +74,11 @@ def main():
         report_to=["tensorboard"],
     )
     # del model,tokenizer
+    for name, param in model.named_parameters():
+        if "classifier" in name:
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
     # 创建Trainer实例
     trainer = GlueTrainer(
         model=model,
@@ -88,13 +93,7 @@ def main():
     print(s)
     log.info(f'预先训练{s}')
     print("结束预先训练")
-    model1, _ = get_model_and_tokenizer(model_checkpoint, task, device)
-    model1.load_state_dict(copy.deepcopy(model.state_dict()))
-    model1.to(next(model.parameters()).device)
     model2, _ = get_model_and_tokenizer(model_checkpoint, task, device)
-    model2.load_state_dict(copy.deepcopy(model.state_dict()))
-    model2.to(next(model.parameters()).device)
-
 
     loss_before = {}
     loss_after = {}
@@ -149,40 +148,6 @@ def main():
     print(f'修剪后：{len(data_p.cur_index)}')
     data_p.get_scores()
 
-    print("训练前的pooler_outputs gap start")
-    model = model1
-    loss_before = []
-    loss_after = []
-    # inputdata = data_p.get_largest_score(32)
-    inputdata = Dataset.from_dict(eval_dataset[:32])
-    data_collator = DataCollatorWithPadding(tokenizer)
-    inputdata_dataloader = DataLoader(
-        inputdata,
-        shuffle=False,
-        batch_size=batch_size,
-        collate_fn=data_collator,
-        # drop_last=dataloader_drop_last,
-        num_workers=2,
-        pin_memory=True
-    )
-    inputdata_iterator = iter(inputdata_dataloader)
-    inputs = prepare_inputs(next(inputdata_iterator), device)
-    labels_history=[item.item() for item in inputs['labels'].cpu()]
-    model.eval()
-    outputs = get_pooler_output(model, inputs)
-    outputs = outputs.data.cpu()
-    loss_before.append(outputs)
-    with torch.no_grad():
-        for name, module in model.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                r = 1 - compress
-                module.weight.data = r * module.weight.data
-    model.eval()
-    outputs = get_pooler_output(model, inputs)
-    outputs = outputs.data.cpu()
-    loss_after.append(outputs)
-    print("训练前的pooler_outputs gap end")
-
     print("开始训练")
     train_dataset = data_p.get_pruned_train_dataset()
     data_collator = DataCollatorWithPadding(tokenizer)
@@ -224,6 +189,8 @@ def main():
         remain_loss=remain_loss,
     )
     model = model2
+    for name, param in model.named_parameters():
+        param.requires_grad = True
     # 创建Trainer实例
     trainer = GlueTrainer(
         model=model,
@@ -246,35 +213,6 @@ def main():
     for file in checkpoint_files:
         shutil.rmtree(file)
         print(f"Deleted checkpoint file: {file}")
-    print("训练后的pooler_outputs gap start")
-    model.eval()
-    outputs = get_pooler_output(model, inputs)
-    outputs = outputs.data.cpu()
-    loss_before.append(outputs)
-    with torch.no_grad():
-        for name, module in model.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                r = 1 - compress
-                module.weight.data = r * module.weight.data
-    model.eval()
-    outputs = get_pooler_output(model, inputs)
-    outputs = outputs.data.cpu()
-    loss_after.append(outputs)
-    print("训练后的pooler_outputs gap end")
-
-    label_file = f"label_file_{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}.csv"
-    df = pd.DataFrame(labels_history)
-    df.to_csv(label_file, index=False)
-    for i in range(len(loss_after)):
-        loss_gap = [(a - b).item() for a, b in zip(loss_after[i], loss_before[i])]
-        norm = sum([abs(number) for number in loss_gap])
-        s=f"norm {i} is {norm}"
-        print(s)
-        log.info(s)
-        loss_gap.append(sum([abs(number) for number in loss_gap]))
-        loss_gap_file = f"pooler_gap_{i}_{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}.csv"
-        df = pd.DataFrame(loss_gap)
-        df.to_csv(loss_gap_file, index=False)
     if remain_loss:
         loss_history = trainer.get_training_loss()
         loss_file = f"{training_args.output_dir}/loss_{training_args.task_name}_{config.target_ratio}_{training_args.weight_decay}_{training_args.seed}_{training_args.num_train_epochs}_{training_args.state}_{config.reg}_{config.pruneFlag}.csv"
@@ -289,5 +227,5 @@ if __name__ == "__main__":
     main()
     #剪枝标准：
             #模型对样本的损失颗粒的绝对值
-    #接着训练
-    # python ../traindata12.py --state ft --dataset mrpc --seed 3404 --reg 5e-8 --weight_decay 0.0 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --pruneFlag up --optim adamw_torch
+    #从头开始训练,在筛选阶段冻结前馈头
+    # python ../traindata12_0_frozen.py --state ft --dataset mrpc --seed 3404 --reg 5e-8 --weight_decay 0.0 --epoch 10 --epoch0 1 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --pruneFlag up --optim adamw_torch

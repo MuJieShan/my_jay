@@ -74,6 +74,11 @@ def main():
         report_to=["tensorboard"],
     )
     # del model,tokenizer
+    for name, param in model.named_parameters():
+        if "classifier" in name:
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
     # 创建Trainer实例
     trainer = GlueTrainer(
         model=model,
@@ -224,6 +229,8 @@ def main():
         remain_loss=remain_loss,
     )
     model = model2
+    for name, param in model.named_parameters():
+        param.requires_grad = True
     # 创建Trainer实例
     trainer = GlueTrainer(
         model=model,
@@ -289,5 +296,5 @@ if __name__ == "__main__":
     main()
     #剪枝标准：
             #模型对样本的损失颗粒的绝对值
-    #接着训练
-    # python ../traindata12.py --state ft --dataset mrpc --seed 3404 --reg 5e-8 --weight_decay 0.0 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --pruneFlag up --optim adamw_torch
+    #接着训练,筛选阶段冻结前馈头
+    #python ../../traindata12_frozen.py --state ft --dataset sst2 --seed 3404 --reg 5e-8 --weight_decay 0 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --pruneFlag up --batchsize 32 --learning_rate 2e-5
