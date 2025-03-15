@@ -192,7 +192,6 @@ def get_dataloader2(task: str, model_checkpoint: str, dataloader_drop_last: bool
         validation_name = "validation_matched"
     if task == "mnli-mm":
         validation_name = "validation_mismatched"
-
     actual_task = "mnli" if task == "mnli-mm" else task
     dataset = load_dataset("glue", actual_task)
     train_dataset = dataset['train']

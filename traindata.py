@@ -10,7 +10,6 @@ def main():
     log=init_log()
     log.info(config)
     seed_torch(config.seed)
-
     # Config Settings
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model_checkpoint = "bert-base-uncased"
