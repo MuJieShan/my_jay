@@ -1437,7 +1437,7 @@ def  train_ft_loop2(config, model, train_epoch_iterator,eval_epoch_iterator, opt
     #     name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.reg_1}_{config.seed}.csv"
     #     df = pd.DataFrame(train_eval[name2])
     #     df.to_csv(name2_file, index=False)
-#动态数据剪枝，每2个epoch之后选择50%
+#动态数据剪枝，每2个epoch之后选择50%,并逐渐增大压缩力度
 def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log,trainset):
     """
     每个epoch后根据损失颗粒选择50%
@@ -1553,11 +1553,11 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
             for i in range(len(step_idx)):
                 loss_g_before[step_idx[i].item()] = losses[i].item()
         before.close()
-
+        comp = compress + config.epoch0*e*6e-8
         with torch.no_grad():
             for name, module in model_lp.named_modules():
                 if isinstance(module, (torch.nn.Linear)):
-                    r = 1 - compress
+                    r = 1 - comp
                     module.weight.data = r * module.weight.data
 
         loss_g_after = {}
