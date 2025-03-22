@@ -206,6 +206,7 @@ def get_dataloader2(task: str, model_checkpoint: str, dataloader_drop_last: bool
     train_dataset.set_format(type='torch', columns=columns_to_return)
     validation_dataset.set_format(type='torch', columns=columns_to_return)
     from datasets import Dataset
+
     train_dataset = Dataset.from_dict({'input_ids': train_dataset['input_ids'],
                                        'label': train_dataset['label'],
                                        'attention_mask': train_dataset['attention_mask'],
@@ -214,7 +215,7 @@ def get_dataloader2(task: str, model_checkpoint: str, dataloader_drop_last: bool
     train_dataloader = DataLoader(
         train_dataset,
         shuffle=False,
-        batch_size=batch_size,
+        batch_size=batch_size*8,
         collate_fn=data_collator,
         # drop_last=dataloader_drop_last,
         num_workers=dataloader_num_workers,

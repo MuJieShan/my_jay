@@ -1538,8 +1538,7 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
     model_checkpoint = config.model
     task = config.dataset
 
-
-    def get_epoch_dataloader(model_lp, pruner, e):
+    def get_epoch_dataloader(model_lp, pruner, e,count):
         loss_g_before = {}
         iterator = iter(train_iterator)
         trange = range(len(train_iterator))
@@ -1549,11 +1548,13 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
             inputs = prepare_inputs(next(iterator), device)
             model_lp.eval()
             step_idx = inputs["idx"]
-            losses = get_losses(model_lp, inputs)
+            with torch.no_grad():
+                losses = get_losses(model_lp, inputs)
             for i in range(len(step_idx)):
                 loss_g_before[step_idx[i].item()] = losses[i].item()
         before.close()
-        comp = compress + config.epoch0*e*6e-8
+        t = config.epoch0*(10**count)
+        comp = compress*t
         with torch.no_grad():
             for name, module in model_lp.named_modules():
                 if isinstance(module, (torch.nn.Linear)):
@@ -1569,7 +1570,8 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
             inputs = prepare_inputs(next(iterator), device)
             model_lp.eval()
             step_idx = inputs["idx"]
-            losses = get_losses(model_lp, inputs)
+            with torch.no_grad():
+                losses = get_losses(model_lp, inputs)
             for i in range(len(step_idx)):
                 loss_g_after[step_idx[i].item()] = losses[i].item()
         after.close()
@@ -1593,6 +1595,7 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
 
     train_epoch_iterator2 = None
     print(f"开始训练：数据：{len(train_epoch_iterator)}")
+    count = 0
     for epoch in range(steps):
         metric_batch = {}
         metric_batch['loss'] = []
@@ -1600,11 +1603,13 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
             metric_batch[f"{model.metric.__class__.__name__}"] = []
         if model.metric_1 != None:
             metric_batch[f"{model.metric_1.__class__.__name__}"] = []
-        if epoch%2==0:
+
+        if epoch%config.epoch0==0:
             model_lp = load_model(model_checkpoint, task, device)
             model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
             model_lp.to(next(model.parameters()).device)
-            train_epoch_iterator2 = get_epoch_dataloader(model_lp, data_p, 0)
+            train_epoch_iterator2 = get_epoch_dataloader(model_lp, data_p, epoch,count)
+            count += 1
             del model_lp
         iterator = iter(train_epoch_iterator2)
         trange = range(len(train_epoch_iterator2))
@@ -1650,7 +1655,7 @@ def  train_ft_loop3(config, model, train_epoch_iterator,eval_epoch_iterator, opt
         epoch_length.close()
         print(f"********微调epoch{epoch}********")
         eval_loop()
-    s = f'50% per epoch,initial 100%'
+    s = f'50% per epoch'
     log.info(s)
 
 # 动态数据剪枝，每个epoch之后选择的数据逐渐减少
@@ -1881,6 +1886,790 @@ def train_ft_loop4(config, model, train_epoch_iterator, eval_epoch_iterator, opt
 #     name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.reg_1}_{config.seed}.csv"
 #     df = pd.DataFrame(train_eval[name2])
 #     df.to_csv(name2_file, index=False)
+
+#静态数据剪枝，初始情况不同r下得分的均值
+def  train_ft_loop5(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log,trainset):
+    """
+    初始情况根据不同r的损失颗粒的均值选择50%
+    example : !python traindata_static.py --dataset sst2 --seed 3404 --epoch 10 --epoch0 1 --reg 5e-8 --weight_decay 0 --target_ratio 0.5
+    """
+    loss_history = []
+    name1 = f"{model.metric.__class__.__name__}"
+    train_eval = {name1: []}
+    if model.metric_1 != None:
+        name2 = f'{model.metric_1.__class__.__name__}'
+        train_eval[name2] = []
+    # Training Loop
+    metric_epoch = {}
+    steps = config.epoch
+    iter_num = 0
+    metric_epoch['loss'] = []
+    if model.metric != None:
+        metric_name = f"{model.metric.__class__.__name__}"
+        metric_epoch[f"{model.metric.__class__.__name__}"] = []
+    if model.metric_1 != None:
+        metric_1_name = f"{model.metric_1.__class__.__name__}"
+        metric_epoch[f"{model.metric_1.__class__.__name__}"] = []
+    compress = config.reg
+    compress_ft = config.weight_decay
+    # Eval Loop
+    def eval_loop():
+        metric_batch_test = {}
+        metric_batch_test['loss'] = []
+        if model.metric != None:
+            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
+        if config.dataset == 'stsb' or config.dataset == 'cola':
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                model.eval()
+                model.zero_grad()
+                if config.dataset == 'stsb':
+                    ref = np.array([])
+                    pre = np.array([])
+                else:
+                    ref = np.array([], dtype=np.float64)
+                    pre = np.array([], dtype=np.float64)
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    if "labels" in inputs:
+                        labels = inputs.pop("labels")
+                    outputs = model(**inputs)
+                    if config.dataset == 'stsb':
+                        predictions = outputs.logits.squeeze()
+                    else:
+                        predictions = outputs['logits']
+                    if config.dataset == 'stsb':
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
+                    else:
+                        for i in range(predictions.shape[0]):
+                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+
+                if config.dataset == 'stsb':
+                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
+                else:
+                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
+        else:
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
+                    metric_batch_test['loss'].append(step_loss.item())
+                    if model.metric != None:
+                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(
+                            list(step_metric.values())[0])
+                    if model.metric_1 != None:
+                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
+                            list(step_metric_1.values())[0])
+                    if step == len(eval_epoch_iterator) - 1:
+                        log.info('test---')
+                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
+                        if model.metric != None:
+                            s += ','
+                            s += (
+                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
+                        if model.metric_1 != None:
+                            s += ','
+                            s += (
+                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
+                        log.info(s)
+
+
+    # data pruning
+    data_p = GLUEPruner(dataset=trainset, ratio=config.target_ratio)
+    data_p.prune()
+    train_iterator = train_epoch_iterator
+    model_checkpoint = config.model
+    task = config.dataset
+
+    def get_epoch_dataloader(model, pruner):
+        loss_gap = [[] for _ in range(len(trainset))]
+        k = [compress + config.epoch0*i*(6e-8) for i in range(0, 5)]
+        for k_i in k:
+            model_lp = load_model(model_checkpoint, task, device)
+            model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
+            model_lp.to(next(model.parameters()).device)
+            loss_g_before = {}
+            iterator = iter(train_iterator)
+            trange = range(len(train_iterator))
+            before = tqdm(total=len(train_iterator), desc=f"lp before{k_i}")
+            for step in trange:
+                before.update(1)
+                inputs = prepare_inputs(next(iterator), device)
+                model_lp.eval()
+                step_idx = inputs["idx"]
+                with torch.no_grad():
+                    losses = get_losses(model_lp, inputs)
+                for i in range(len(step_idx)):
+                    loss_g_before[step_idx[i].item()] = losses[i].item()
+            before.close()
+            comp = k_i
+            with torch.no_grad():
+                for name, module in model_lp.named_modules():
+                    if isinstance(module, (torch.nn.Linear)):
+                        r = 1 - comp
+                        module.weight.data = r * module.weight.data
+
+            loss_g_after = {}
+            iterator = iter(train_iterator)
+            trange = range(len(train_iterator))
+            after = tqdm(total=len(train_iterator), desc=f"lp after{k_i}")
+            for step in trange:
+                after.update(1)
+                inputs = prepare_inputs(next(iterator), device)
+                model_lp.eval()
+                step_idx = inputs["idx"]
+                with torch.no_grad():
+                    losses = get_losses(model_lp, inputs)
+                for i in range(len(step_idx)):
+                    loss_g_after[step_idx[i].item()] = losses[i].item()
+            after.close()
+
+            keys = sorted(loss_g_before.keys())
+            loss_g_gap = {key: loss_g_after[key] - loss_g_before[key] for key in keys}
+            for key in keys:
+                loss_gap[key].append(loss_g_gap[key])
+            del model_lp
+
+        average_loss_gap = {}
+        for key, scores in enumerate(loss_gap):
+            average_score = sum(scores) / len(scores)
+            average_loss_gap[key] = average_score
+        iterator = iter(train_epoch_iterator)
+        trange = range(len(train_epoch_iterator))
+        for step in trange:
+            inputs = prepare_inputs(next(iterator), device)
+            get_score = operator.itemgetter(*inputs['idx'].tolist())
+            step_score = torch.tensor(get_score(average_loss_gap))
+            pruner.update(step_score, inputs['idx'])
+        print(f'修剪前：{len(pruner.cur_index)}')
+        pruner.prune()
+        print(f'修剪后：{len(pruner.cur_index)}')
+        sampler = pruner.get_sampler()
+        return get_pruned_dataloader(config, trainset, sampler)
+
+    train_epoch_iterator2 = get_epoch_dataloader(model, data_p)
+    print(f"开始训练：数据：{len(train_epoch_iterator2)}")
+    for epoch in range(steps):
+        metric_batch = {}
+        metric_batch['loss'] = []
+        if model.metric != None:
+            metric_batch[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
+        iterator = iter(train_epoch_iterator2)
+        trange = range(len(train_epoch_iterator2))
+        epoch_length = tqdm(total=len(train_epoch_iterator2), desc=f"epoch {epoch}")
+        for step in trange:
+            epoch_length.update(1)
+            inputs = prepare_inputs(next(iterator), device)
+            model.train()
+            optimizer.zero_grad()
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs)
+            # 惩罚项
+            loss_history.append(step_loss.item())
+            step_loss.backward()
+            train_eval[name1].append(step_metric)
+            if step_metric_1:
+                train_eval[name2].append(step_metric_1)
+            with torch.no_grad():
+                for name, module in model.named_modules():
+                    if isinstance(module, torch.nn.Linear):
+                        r = compress_ft
+                        module.weight.grad += r * module.weight
+
+            optimizer.step()
+            metric_batch['loss'].append(step_loss.item())
+            if model.metric != None:
+                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
+            if model.metric_1 != None:
+                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
+
+            # if step % l == 0:
+            #     s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
+            #     if model.metric != None:
+            #         s += ','
+            #         s += (
+            #             f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
+            #     if model.metric_1 != None:
+            #         s += ','
+            #         s += (
+            #             f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
+            #     log.info(s)
+            #     eval_loop()
+            iter_num += 1
+        epoch_length.close()
+        print(f"********微调epoch{epoch}********")
+        eval_loop()
+    s = f'50%, initial 0'
+    log.info(s)
+
+#静态数据剪枝，微调一个epoch后不同r下得分的均值
+def  train_ft_loop6(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log,trainset):
+    """
+    微调一个epoch后根据不同r的损失颗粒的均值选择50%，并从头开始训练
+    example : !python traindata_static1.py --dataset sst2 --seed 3404 --epoch 10 --epoch0 1 --reg 5e-8 --weight_decay 0 --target_ratio 0.5
+    """
+    loss_history = []
+    name1 = f"{model.metric.__class__.__name__}"
+    train_eval = {name1: []}
+    if model.metric_1 != None:
+        name2 = f'{model.metric_1.__class__.__name__}'
+        train_eval[name2] = []
+    # Training Loop
+    metric_epoch = {}
+    steps = config.epoch
+    iter_num = 0
+    metric_epoch['loss'] = []
+    if model.metric != None:
+        metric_name = f"{model.metric.__class__.__name__}"
+        metric_epoch[f"{model.metric.__class__.__name__}"] = []
+    if model.metric_1 != None:
+        metric_1_name = f"{model.metric_1.__class__.__name__}"
+        metric_epoch[f"{model.metric_1.__class__.__name__}"] = []
+    compress = config.reg
+    compress_ft = config.weight_decay
+    # Eval Loop
+    def eval_loop():
+        metric_batch_test = {}
+        metric_batch_test['loss'] = []
+        if model.metric != None:
+            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
+        if config.dataset == 'stsb' or config.dataset == 'cola':
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                model.eval()
+                model.zero_grad()
+                if config.dataset == 'stsb':
+                    ref = np.array([])
+                    pre = np.array([])
+                else:
+                    ref = np.array([], dtype=np.float64)
+                    pre = np.array([], dtype=np.float64)
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    if "labels" in inputs:
+                        labels = inputs.pop("labels")
+                    outputs = model(**inputs)
+                    if config.dataset == 'stsb':
+                        predictions = outputs.logits.squeeze()
+                    else:
+                        predictions = outputs['logits']
+                    if config.dataset == 'stsb':
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
+                    else:
+                        for i in range(predictions.shape[0]):
+                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+
+                if config.dataset == 'stsb':
+                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
+                else:
+                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
+        else:
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
+                    metric_batch_test['loss'].append(step_loss.item())
+                    if model.metric != None:
+                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(
+                            list(step_metric.values())[0])
+                    if model.metric_1 != None:
+                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
+                            list(step_metric_1.values())[0])
+                    if step == len(eval_epoch_iterator) - 1:
+                        log.info('test---')
+                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
+                        if model.metric != None:
+                            s += ','
+                            s += (
+                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
+                        if model.metric_1 != None:
+                            s += ','
+                            s += (
+                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
+                        log.info(s)
+
+
+    # data pruning
+    data_p = GLUEPruner(dataset=trainset, ratio=config.target_ratio)
+    data_p.prune()
+    sampler = data_p.get_sampler()
+    train_epoch_iterator1 = get_pruned_dataloader(config, trainset, sampler)
+    train_iterator = train_epoch_iterator
+    model_checkpoint = config.model
+    task = config.dataset
+
+    def get_epoch_dataloader(model, pruner):
+        loss_gap = [[] for _ in range(len(trainset))]
+        k = [compress + config.epoch0*i*(6e-8) for i in range(0, 5)]
+        for k_i in k:
+            model_lp = load_model(model_checkpoint, task, device)
+            model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
+            model_lp.to(next(model.parameters()).device)
+            loss_g_before = {}
+            iterator = iter(train_iterator)
+            trange = range(len(train_iterator))
+            before = tqdm(total=len(train_iterator), desc=f"lp before{k_i}")
+            for step in trange:
+                before.update(1)
+                inputs = prepare_inputs(next(iterator), device)
+                model_lp.eval()
+                step_idx = inputs["idx"]
+                with torch.no_grad():
+                    losses = get_losses(model_lp, inputs)
+                for i in range(len(step_idx)):
+                    loss_g_before[step_idx[i].item()] = losses[i].item()
+            before.close()
+            comp = k_i
+            with torch.no_grad():
+                for name, module in model_lp.named_modules():
+                    if isinstance(module, (torch.nn.Linear)):
+                        r = 1 - comp
+                        module.weight.data = r * module.weight.data
+
+            loss_g_after = {}
+            iterator = iter(train_iterator)
+            trange = range(len(train_iterator))
+            after = tqdm(total=len(train_iterator), desc=f"lp after{k_i}")
+            for step in trange:
+                after.update(1)
+                inputs = prepare_inputs(next(iterator), device)
+                model_lp.eval()
+                step_idx = inputs["idx"]
+                with torch.no_grad():
+                    losses = get_losses(model_lp, inputs)
+                for i in range(len(step_idx)):
+                    loss_g_after[step_idx[i].item()] = losses[i].item()
+            after.close()
+
+            keys = sorted(loss_g_before.keys())
+            loss_g_gap = {key: loss_g_after[key] - loss_g_before[key] for key in keys}
+            for key in keys:
+                loss_gap[key].append(loss_g_gap[key])
+            del model_lp
+
+        average_loss_gap = {}
+        for key, scores in enumerate(loss_gap):
+            average_score = sum(scores) / len(scores)
+            average_loss_gap[key] = average_score
+        iterator = iter(train_epoch_iterator)
+        trange = range(len(train_epoch_iterator))
+        for step in trange:
+            inputs = prepare_inputs(next(iterator), device)
+            get_score = operator.itemgetter(*inputs['idx'].tolist())
+            step_score = torch.tensor(get_score(average_loss_gap))
+            pruner.update(step_score, inputs['idx'])
+        print(f'修剪前：{len(pruner.cur_index)}')
+        pruner.prune()
+        print(f'修剪后：{len(pruner.cur_index)}')
+        sampler = pruner.get_sampler()
+        return get_pruned_dataloader(config, trainset, sampler)
+    for epoch in range(1):
+        metric_batch = {}
+        metric_batch['loss'] = []
+        if model.metric != None:
+            metric_batch[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
+        iterator = iter(train_epoch_iterator1)
+        trange = range(len(train_epoch_iterator1))
+        epoch_length = tqdm(total=len(train_epoch_iterator1), desc=f"epoch {epoch}")
+        for step in trange:
+            epoch_length.update(1)
+            inputs = prepare_inputs(next(iterator), device)
+            model.train()
+            optimizer.zero_grad()
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs)
+            # 惩罚项
+            loss_history.append(step_loss.item())
+            step_loss.backward()
+            train_eval[name1].append(step_metric)
+            if step_metric_1:
+                train_eval[name2].append(step_metric_1)
+            with torch.no_grad():
+                for name, module in model.named_modules():
+                    if isinstance(module, torch.nn.Linear):
+                        r = compress_ft
+                        module.weight.grad += r * module.weight
+
+            optimizer.step()
+            metric_batch['loss'].append(step_loss.item())
+            if model.metric != None:
+                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
+            if model.metric_1 != None:
+                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
+
+            # if step % l == 0:
+            #     s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
+            #     if model.metric != None:
+            #         s += ','
+            #         s += (
+            #             f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
+            #     if model.metric_1 != None:
+            #         s += ','
+            #         s += (
+            #             f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
+            #     log.info(s)
+            #     eval_loop()
+            iter_num += 1
+        epoch_length.close()
+        print(f"********微调epoch{epoch}********")
+        eval_loop()
+
+    train_epoch_iterator2 = get_epoch_dataloader(model, data_p)
+    del optimizer,model
+    model = load_model(model_checkpoint, task, device)
+    optimizer = create_optimizer(model, learning_rate=config.learning_rate, config=config, batch_num=len(train_epoch_iterator))
+    print(f"开始训练：数据：{len(train_epoch_iterator2)}")
+    for epoch in range(steps):
+        metric_batch = {}
+        metric_batch['loss'] = []
+        if model.metric != None:
+            metric_batch[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
+        iterator = iter(train_epoch_iterator2)
+        trange = range(len(train_epoch_iterator2))
+        epoch_length = tqdm(total=len(train_epoch_iterator2), desc=f"epoch {epoch}")
+        for step in trange:
+            epoch_length.update(1)
+            inputs = prepare_inputs(next(iterator), device)
+            model.train()
+            optimizer.zero_grad()
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs)
+            # 惩罚项
+            loss_history.append(step_loss.item())
+            step_loss.backward()
+            train_eval[name1].append(step_metric)
+            if step_metric_1:
+                train_eval[name2].append(step_metric_1)
+            with torch.no_grad():
+                for name, module in model.named_modules():
+                    if isinstance(module, torch.nn.Linear):
+                        r = compress_ft
+                        module.weight.grad += r * module.weight
+
+            optimizer.step()
+            metric_batch['loss'].append(step_loss.item())
+            if model.metric != None:
+                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
+            if model.metric_1 != None:
+                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
+
+            # if step % l == 0:
+            #     s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
+            #     if model.metric != None:
+            #         s += ','
+            #         s += (
+            #             f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
+            #     if model.metric_1 != None:
+            #         s += ','
+            #         s += (
+            #             f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
+            #     log.info(s)
+            #     eval_loop()
+            iter_num += 1
+        epoch_length.close()
+        print(f"********微调epoch{epoch}********")
+        eval_loop()
+    s = f'50%, initial 1'
+    log.info(s)
+#静态数据剪枝，微调一个epoch后不同r下得分的均值,接着训练
+def  train_ft_loop7(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log,trainset):
+    """
+    微调一个epoch后根据不同r的损失颗粒的均值选择50%，并接着训练
+    example : !python traindata_static2.py --dataset sst2 --seed 3404 --epoch 10 --epoch0 1 --reg 5e-8 --weight_decay 0 --target_ratio 0.5
+    """
+    loss_history = []
+    name1 = f"{model.metric.__class__.__name__}"
+    train_eval = {name1: []}
+    if model.metric_1 != None:
+        name2 = f'{model.metric_1.__class__.__name__}'
+        train_eval[name2] = []
+    # Training Loop
+    metric_epoch = {}
+    steps = config.epoch
+    iter_num = 0
+    metric_epoch['loss'] = []
+    if model.metric != None:
+        metric_name = f"{model.metric.__class__.__name__}"
+        metric_epoch[f"{model.metric.__class__.__name__}"] = []
+    if model.metric_1 != None:
+        metric_1_name = f"{model.metric_1.__class__.__name__}"
+        metric_epoch[f"{model.metric_1.__class__.__name__}"] = []
+    compress = config.reg
+    compress_ft = config.weight_decay
+    # Eval Loop
+    def eval_loop():
+        metric_batch_test = {}
+        metric_batch_test['loss'] = []
+        if model.metric != None:
+            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
+        if config.dataset == 'stsb' or config.dataset == 'cola':
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                model.eval()
+                model.zero_grad()
+                if config.dataset == 'stsb':
+                    ref = np.array([])
+                    pre = np.array([])
+                else:
+                    ref = np.array([], dtype=np.float64)
+                    pre = np.array([], dtype=np.float64)
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    if "labels" in inputs:
+                        labels = inputs.pop("labels")
+                    outputs = model(**inputs)
+                    if config.dataset == 'stsb':
+                        predictions = outputs.logits.squeeze()
+                    else:
+                        predictions = outputs['logits']
+                    if config.dataset == 'stsb':
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
+                    else:
+                        for i in range(predictions.shape[0]):
+                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+
+                if config.dataset == 'stsb':
+                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
+                else:
+                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
+        else:
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
+                    metric_batch_test['loss'].append(step_loss.item())
+                    if model.metric != None:
+                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(
+                            list(step_metric.values())[0])
+                    if model.metric_1 != None:
+                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
+                            list(step_metric_1.values())[0])
+                    if step == len(eval_epoch_iterator) - 1:
+                        log.info('test---')
+                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
+                        if model.metric != None:
+                            s += ','
+                            s += (
+                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
+                        if model.metric_1 != None:
+                            s += ','
+                            s += (
+                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
+                        log.info(s)
+
+
+    # data pruning
+    data_p = GLUEPruner(dataset=trainset, ratio=config.target_ratio)
+    data_p.prune()
+    sampler = data_p.get_sampler()
+    train_epoch_iterator1 = get_pruned_dataloader(config, trainset, sampler)
+    train_iterator = train_epoch_iterator
+    model_checkpoint = config.model
+    task = config.dataset
+
+    def get_epoch_dataloader(model, pruner):
+        loss_gap = [[] for _ in range(len(trainset))]
+        k = [compress + config.epoch0*i*(6e-8) for i in range(0, 5)]
+        for k_i in k:
+            model_lp = load_model(model_checkpoint, task, device)
+            model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
+            model_lp.to(next(model.parameters()).device)
+            loss_g_before = {}
+            iterator = iter(train_iterator)
+            trange = range(len(train_iterator))
+            before = tqdm(total=len(train_iterator), desc=f"lp before{k_i}")
+            for step in trange:
+                before.update(1)
+                inputs = prepare_inputs(next(iterator), device)
+                model_lp.eval()
+                step_idx = inputs["idx"]
+                with torch.no_grad():
+                    losses = get_losses(model_lp, inputs)
+                for i in range(len(step_idx)):
+                    loss_g_before[step_idx[i].item()] = losses[i].item()
+            before.close()
+            comp = k_i
+            with torch.no_grad():
+                for name, module in model_lp.named_modules():
+                    if isinstance(module, (torch.nn.Linear)):
+                        r = 1 - comp
+                        module.weight.data = r * module.weight.data
+
+            loss_g_after = {}
+            iterator = iter(train_iterator)
+            trange = range(len(train_iterator))
+            after = tqdm(total=len(train_iterator), desc=f"lp after{k_i}")
+            for step in trange:
+                after.update(1)
+                inputs = prepare_inputs(next(iterator), device)
+                model_lp.eval()
+                step_idx = inputs["idx"]
+                with torch.no_grad():
+                    losses = get_losses(model_lp, inputs)
+                for i in range(len(step_idx)):
+                    loss_g_after[step_idx[i].item()] = losses[i].item()
+            after.close()
+
+            keys = sorted(loss_g_before.keys())
+            loss_g_gap = {key: loss_g_after[key] - loss_g_before[key] for key in keys}
+            for key in keys:
+                loss_gap[key].append(loss_g_gap[key])
+            del model_lp
+
+        average_loss_gap = {}
+        for key, scores in enumerate(loss_gap):
+            average_score = sum(scores) / len(scores)
+            average_loss_gap[key] = average_score
+        iterator = iter(train_epoch_iterator)
+        trange = range(len(train_epoch_iterator))
+        for step in trange:
+            inputs = prepare_inputs(next(iterator), device)
+            get_score = operator.itemgetter(*inputs['idx'].tolist())
+            step_score = torch.tensor(get_score(average_loss_gap))
+            pruner.update(step_score, inputs['idx'])
+        print(f'修剪前：{len(pruner.cur_index)}')
+        pruner.prune()
+        print(f'修剪后：{len(pruner.cur_index)}')
+        sampler = pruner.get_sampler()
+        return get_pruned_dataloader(config, trainset, sampler)
+    for epoch in range(1):
+        metric_batch = {}
+        metric_batch['loss'] = []
+        if model.metric != None:
+            metric_batch[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
+        iterator = iter(train_epoch_iterator1)
+        trange = range(len(train_epoch_iterator1))
+        epoch_length = tqdm(total=len(train_epoch_iterator1), desc=f"epoch {epoch}")
+        for step in trange:
+            epoch_length.update(1)
+            inputs = prepare_inputs(next(iterator), device)
+            model.train()
+            optimizer.zero_grad()
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs)
+            # 惩罚项
+            loss_history.append(step_loss.item())
+            step_loss.backward()
+            train_eval[name1].append(step_metric)
+            if step_metric_1:
+                train_eval[name2].append(step_metric_1)
+            with torch.no_grad():
+                for name, module in model.named_modules():
+                    if isinstance(module, torch.nn.Linear):
+                        r = compress_ft
+                        module.weight.grad += r * module.weight
+
+            optimizer.step()
+            metric_batch['loss'].append(step_loss.item())
+            if model.metric != None:
+                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
+            if model.metric_1 != None:
+                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
+
+            # if step % l == 0:
+            #     s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
+            #     if model.metric != None:
+            #         s += ','
+            #         s += (
+            #             f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
+            #     if model.metric_1 != None:
+            #         s += ','
+            #         s += (
+            #             f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
+            #     log.info(s)
+            #     eval_loop()
+            iter_num += 1
+        epoch_length.close()
+        print(f"********微调epoch{epoch}********")
+        eval_loop()
+    train_epoch_iterator2 = get_epoch_dataloader(model, data_p)
+
+    model1 = load_model(model_checkpoint, task, device)
+    model1.load_state_dict(copy.deepcopy(model.state_dict()))
+    model1.to(next(model.parameters()).device)
+    del optimizer, model
+    model = model1
+    optimizer = create_optimizer(model, learning_rate=config.learning_rate, config=config, batch_num=len(train_epoch_iterator))
+    print(f"开始训练：数据：{len(train_epoch_iterator2)}")
+    print(f"开始训练：数据：{len(train_epoch_iterator2)}")
+    for epoch in range(steps):
+        metric_batch = {}
+        metric_batch['loss'] = []
+        if model.metric != None:
+            metric_batch[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
+        iterator = iter(train_epoch_iterator2)
+        trange = range(len(train_epoch_iterator2))
+        epoch_length = tqdm(total=len(train_epoch_iterator2), desc=f"epoch {epoch}")
+        for step in trange:
+            epoch_length.update(1)
+            inputs = prepare_inputs(next(iterator), device)
+            model.train()
+            optimizer.zero_grad()
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs)
+            # 惩罚项
+            loss_history.append(step_loss.item())
+            step_loss.backward()
+            train_eval[name1].append(step_metric)
+            if step_metric_1:
+                train_eval[name2].append(step_metric_1)
+            with torch.no_grad():
+                for name, module in model.named_modules():
+                    if isinstance(module, torch.nn.Linear):
+                        r = compress_ft
+                        module.weight.grad += r * module.weight
+
+            optimizer.step()
+            metric_batch['loss'].append(step_loss.item())
+            if model.metric != None:
+                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
+            if model.metric_1 != None:
+                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
+
+            # if step % l == 0:
+            #     s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
+            #     if model.metric != None:
+            #         s += ','
+            #         s += (
+            #             f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
+            #     if model.metric_1 != None:
+            #         s += ','
+            #         s += (
+            #             f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
+            #     log.info(s)
+            #     eval_loop()
+            iter_num += 1
+        epoch_length.close()
+        print(f"********微调epoch{epoch}********")
+        eval_loop()
+    s = f'50%, following 1'
+    log.info(s)
 def statistics_loss_loop(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
     """
     统计直接压缩前后模型输出之差（不同batch）
@@ -2561,7 +3350,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
         loss_g_before = {}
         iterator = iter(train_dataloader1)
         # trange = range(len(train_dataloader1))
-        trange = range(1000)
+        trange = range(2000)
         before = tqdm(total=len(train_dataloader1), desc=f"lp before{e}")
         for step in trange:
             before.update(1)
@@ -2606,9 +3395,10 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
     task = config.dataset
     k_0=1e-08
 
+    k = [2e-08,3e-08,5e-08,5e-07,5e-06,5e-05,5e-04,5e-03]
     # k = [2e-08,3e-08,4e-08,5e-08,6e-08,7e-08,8e-08,9e-08]
     # k = [1e-07,2e-07,3e-07,4e-07,5e-07,6e-07,7e-07,8e-07,9e-07]
-    k = [compress+i*k_0 for i in range(0,10)]
+    # k = [compress+i*k_0 for i in range(0,10)]
     for k_i in k:
         model_lp=load_model(model_checkpoint,task,device)
         model_lp.load_state_dict(copy.deepcopy(model.state_dict()))
