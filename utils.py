@@ -3526,7 +3526,7 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
         if "classifier" in name:
             param.requires_grad = True
         else:
-            param.requires_grad = False
+            param.requires_grad = True
     optimizer = create_optimizer(model, learning_rate=config.learning_rate)
     for epoch in range(1):
         metric_batch = {}
