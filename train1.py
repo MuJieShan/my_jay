@@ -20,7 +20,6 @@ def main():
     # Load DataLoader
     print(f"\nLoading data...")
     train_epoch_iterator, eval_epoch_iterator = get_dataloader(task, model_checkpoint, shuffle=True,batch_size=batch_size)
-
     # Load Pre-trained Model
     print(f"\nLoading pre-trained BERT model \"{model_checkpoint}\"")
     model=load_model(model_checkpoint,task,device)
