@@ -576,6 +576,15 @@ def getOneNormofModel(model):
                 OneNorm += sum
     return  OneNorm
 
+def getFroNormofModel(model):
+    FroNorm = 0
+    with torch.no_grad():
+        for name, module in model.named_modules():
+            if "classifier" not in name and isinstance(module, torch.nn.Linear):
+                sum = torch.norm(module.weight.data, p='fro').item()
+                FroNorm += sum
+    return  FroNorm
+
 def train_eval_loop(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
     """
     example : !python train.py --dataset mrpc --seed 3404 --epoch 10 --reg 0.001 --reg_1 0.05
@@ -3211,7 +3220,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
     计算每个样本的损失颗粒
     每个惩罚系数r(2e-8)统计一次
     目的：观察是否真的存在颗粒裂解的情况
-    example : !python ../train.py --dataset sst2 --seed 3404 --epoch0 1 --reg 5e-08 --weight_decay 0.001 --model bert-base-uncased --batchsize 32
+    example : !python train.py --dataset sst2 --seed 3404 --epoch0 1 --reg 5e-08 --weight_decay 0.001 --model bert-base-uncased --batchsize 32
     """
     name1 = f"{model.metric.__class__.__name__}"
     train_eval = {name1: []}
@@ -3345,7 +3354,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
         eval_loop()
 
     print("computing loss particles:")
-    loss_gap = [[] for _ in range(len(train_dataloader1))]
+    loss_gap = [[] for _ in range(2000)]
     def loss_particles(model_lp,e,loss_gap):
         loss_g_before = {}
         iterator = iter(train_dataloader1)
@@ -3372,7 +3381,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
         loss_g_after = {}
         iterator = iter(train_dataloader1)
         # trange = range(len(train_dataloader1))
-        trange = range(1000)
+        trange = range(2000)
         after = tqdm(total=len(train_dataloader1), desc=f"lp after{e}")
         for step in trange:
             after.update(1)
@@ -3418,3 +3427,171 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
         name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.seed}.csv"
         df = pd.DataFrame(train_eval[name2])
         df.to_csv(name2_file, index=False)
+
+def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
+    """
+    example : !python train1.py --dataset sst2 --seed 3404 --epoch 4
+    """
+    loss_history = []
+    FroNormofweight = []
+    name1 = f"{model.metric.__class__.__name__}"
+    train_eval = {name1: []}
+    if model.metric_1 != None:
+        name2 = f'{model.metric_1.__class__.__name__}'
+        train_eval[name2] = []
+    # Training Loop
+    length = len(train_epoch_iterator)
+    print('len:', length)
+    l = length // 3
+    metric_epoch = {}
+    steps = config.epoch
+    iter_num = 0
+    metric_epoch['loss'] = []
+    if model.metric != None:
+        metric_name = f"{model.metric.__class__.__name__}"
+        metric_epoch[f"{model.metric.__class__.__name__}"] = []
+    if model.metric_1 != None:
+        metric_1_name = f"{model.metric_1.__class__.__name__}"
+        metric_epoch[f"{model.metric_1.__class__.__name__}"] = []
+    compress = config.reg
+    # Eval Loop
+    def eval_loop():
+        metric_batch_test = {}
+        metric_batch_test['loss'] = []
+        if model.metric != None:
+            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
+        if config.dataset == 'stsb' or config.dataset == 'cola':
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                model.eval()
+                model.zero_grad()
+                if config.dataset == 'stsb':
+                    ref = np.array([])
+                    pre = np.array([])
+                else:
+                    ref = np.array([], dtype=np.float64)
+                    pre = np.array([], dtype=np.float64)
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    if "labels" in inputs:
+                        labels = inputs.pop("labels")
+                    outputs = model(**inputs)
+                    if config.dataset == 'stsb':
+                        predictions = outputs.logits.squeeze()
+                    else:
+                        predictions = outputs['logits']
+                    if config.dataset == 'stsb':
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
+                    else:
+                        for i in range(predictions.shape[0]):
+                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+
+                if config.dataset == 'stsb':
+                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
+                else:
+                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
+        else:
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
+                    metric_batch_test['loss'].append(step_loss.item())
+                    if model.metric != None:
+                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(
+                            list(step_metric.values())[0])
+                    if model.metric_1 != None:
+                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
+                            list(step_metric_1.values())[0])
+                    if step == len(eval_epoch_iterator) - 1:
+                        log.info('test---')
+                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
+                        if model.metric != None:
+                            s += ','
+                            s += (
+                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
+                        if model.metric_1 != None:
+                            s += ','
+                            s += (
+                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
+                        log.info(s)
+
+    FroNormofweight.append(getFroNormofModel(model))
+    for epoch in range(steps):
+        if epoch==0:
+            for name, param in model.named_parameters():
+                if "classifier" in name:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
+        else:
+            for name, param in model.named_parameters():
+                if "classifier" in name:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
+        metric_batch = {}
+        metric_batch['loss'] = []
+        if model.metric != None:
+            metric_batch[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
+        iterator = iter(train_epoch_iterator)
+        trange = range(len(train_epoch_iterator))
+        for step in trange:
+            inputs = prepare_inputs(next(iterator), device)
+            model.train()
+            optimizer.zero_grad()
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs)
+            # 惩罚项
+            loss_history.append(step_loss.item())
+            step_loss.backward()
+            train_eval[name1].append(step_metric)
+            if step_metric_1:
+                train_eval[name2].append(step_metric_1)
+
+            optimizer.step()
+            FroNormofweight.append(getFroNormofModel(model))
+
+            metric_batch['loss'].append(step_loss.item())
+            if model.metric != None:
+                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
+            if model.metric_1 != None:
+                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
+
+            if step % l == 0:
+                s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
+                if model.metric != None:
+                    s += ','
+                    s += (
+                        f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
+                if model.metric_1 != None:
+                    s += ','
+                    s += (
+                        f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
+                log.info(s)
+                eval_loop()
+            iter_num += 1
+        print(f"********微调epoch{epoch}********")
+        eval_loop()
+    loss_file = f"loss_ft_{config.dataset}_{config.reg}_{config.seed}.csv"
+    df = pd.DataFrame(loss_history)
+    df.to_csv(loss_file, index=False)
+
+    name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    df = pd.DataFrame(train_eval[name1])
+    df.to_csv(name1_file, index=False)
+    if model.metric_1 != None:
+        name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+        df = pd.DataFrame(train_eval[name2])
+        df.to_csv(name2_file, index=False)
+
+    weight_file = f"weight_ft_{config.dataset}_{config.reg}_{config.seed}.csv"
+    df = pd.DataFrame(FroNormofweight)
+    df.to_csv(weight_file, index=False)

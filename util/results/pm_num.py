@@ -329,7 +329,7 @@ def CrossEntropyLoss():
     # print('logsoftmax_output:\n', logsoftmax_output)
 
 
-    print(sum(losses).item()/len(losses))
+    print(sum(losses).item()/len(losses))#不能用torch.sum()
     print(nlloss_output.item())
     nlloss_output1 = torch.mean(-logsoftmax_output[np.arange(4),1-labels])
 

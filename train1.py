@@ -29,8 +29,8 @@ def main():
     # optimizer1 = create_optimizer(model1, learning_rate=lr,config=config,batch_num=len(train_epoch_iterator))
     print('train data len:', len(train_epoch_iterator))
     # train_eval_loop1(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
-    train_ft_loop1(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
-
+    # train_ft_loop1(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
+    train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log)
 if __name__ == "__main__":
     main()
 
