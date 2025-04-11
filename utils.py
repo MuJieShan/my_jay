@@ -3426,6 +3426,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
         df = pd.DataFrame(train_eval[name2])
         df.to_csv(name2_file, index=False)
 
+#先冻结原模型，只训练分类头
 def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
     """
     example : !python train1.py --dataset sst2 --seed 3404 --epoch 4
@@ -3581,6 +3582,219 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
         param.requires_grad = True
     optimizer = create_optimizer(model, learning_rate=config.learning_rate)
     for epoch in range(steps-1):
+        metric_batch = {}
+        metric_batch['loss'] = []
+        if model.metric != None:
+            metric_batch[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
+        iterator = iter(train_epoch_iterator)
+        trange = range(len(train_epoch_iterator))
+        for step in trange:
+            inputs = prepare_inputs(next(iterator), device)
+            model.train()
+            optimizer.zero_grad()
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs)
+            loss_history.append(step_loss.item())
+            step_loss.backward()
+            train_eval[name1].append(step_metric)
+            if step_metric_1:
+                train_eval[name2].append(step_metric_1)
+
+            optimizer.step()
+            FroNormofweight.append(getFroNormofModel(model))
+
+            metric_batch['loss'].append(step_loss.item())
+            if model.metric != None:
+                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
+            if model.metric_1 != None:
+                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
+
+            if step % l == 0:
+                s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
+                if model.metric != None:
+                    s += ','
+                    s += (
+                        f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
+                if model.metric_1 != None:
+                    s += ','
+                    s += (
+                        f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
+                log.info(s)
+                eval_loop()
+            iter_num += 1
+        print(f"********微调epoch{epoch}********")
+        eval_loop()
+    loss_file = f"loss_ft_{config.dataset}_{config.reg}_{config.seed}.csv"
+    df = pd.DataFrame(loss_history)
+    df.to_csv(loss_file, index=False)
+
+    name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
+    df = pd.DataFrame(train_eval[name1])
+    df.to_csv(name1_file, index=False)
+    if model.metric_1 != None:
+        name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
+        df = pd.DataFrame(train_eval[name2])
+        df.to_csv(name2_file, index=False)
+
+    weight_file = f"weight_ft_{config.dataset}_{config.reg}_{config.seed}.csv"
+    df = pd.DataFrame(FroNormofweight)
+    df.to_csv(weight_file, index=False)
+
+#先全部训练，再冻结原模型
+def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
+    """
+    example : !python trainpost.py --dataset sst2 --seed 3404 --epoch 4
+    """
+    loss_history = []
+    FroNormofweight = []
+    name1 = f"{model.metric.__class__.__name__}"
+    train_eval = {name1: []}
+    if model.metric_1 != None:
+        name2 = f'{model.metric_1.__class__.__name__}'
+        train_eval[name2] = []
+    # Training Loop
+    length = len(train_epoch_iterator)
+    print('len:', length)
+    l = length // 3
+    metric_epoch = {}
+    steps = config.epoch
+    iter_num = 0
+    metric_epoch['loss'] = []
+    if model.metric != None:
+        metric_name = f"{model.metric.__class__.__name__}"
+        metric_epoch[f"{model.metric.__class__.__name__}"] = []
+    if model.metric_1 != None:
+        metric_1_name = f"{model.metric_1.__class__.__name__}"
+        metric_epoch[f"{model.metric_1.__class__.__name__}"] = []
+    compress = config.reg
+    # Eval Loop
+    def eval_loop():
+        metric_batch_test = {}
+        metric_batch_test['loss'] = []
+        if model.metric != None:
+            metric_batch_test[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch_test[f"{model.metric_1.__class__.__name__}"] = []
+        if config.dataset == 'stsb' or config.dataset == 'cola':
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                model.eval()
+                model.zero_grad()
+                if config.dataset == 'stsb':
+                    ref = np.array([])
+                    pre = np.array([])
+                else:
+                    ref = np.array([], dtype=np.float64)
+                    pre = np.array([], dtype=np.float64)
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    if "labels" in inputs:
+                        labels = inputs.pop("labels")
+                    outputs = model(**inputs)
+                    if config.dataset == 'stsb':
+                        predictions = outputs.logits.squeeze()
+                    else:
+                        predictions = outputs['logits']
+                    if config.dataset == 'stsb':
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+                        pre = np.concatenate((pre, torch.clone(predictions).detach().cpu().numpy()), axis=0)
+                    else:
+                        for i in range(predictions.shape[0]):
+                            pre = np.append(pre, 0 if predictions[i][0] > predictions[i][1] else 1)
+                        ref = np.concatenate((ref, torch.clone(labels).detach().cpu().numpy()), axis=0)
+
+                if config.dataset == 'stsb':
+                    log.info(str(glue_compute_metrics('sts-b', pre, ref)))
+                else:
+                    log.info('matthews_correlation:' + str(matthews_correlation(ref, pre)))
+        else:
+            trange = range(len(eval_epoch_iterator))
+            iterator = iter(eval_epoch_iterator)
+            with torch.no_grad():
+                for step in trange:
+                    inputs = prepare_inputs(next(iterator), device)
+                    step_loss, step_metric, step_metric_1 = eval_step(model, inputs)
+                    metric_batch_test['loss'].append(step_loss.item())
+                    if model.metric != None:
+                        metric_batch_test[f"{model.metric.__class__.__name__}"].append(
+                            list(step_metric.values())[0])
+                    if model.metric_1 != None:
+                        metric_batch_test[f"{model.metric_1.__class__.__name__}"].append(
+                            list(step_metric_1.values())[0])
+                    if step == len(eval_epoch_iterator) - 1:
+                        log.info('test---')
+                        s = f'loss: {sum(metric_batch_test["loss"]) / len(metric_batch_test["loss"])}'
+                        if model.metric != None:
+                            s += ','
+                            s += (
+                                f"{model.metric.__class__.__name__}:{sum(metric_batch_test[model.metric.__class__.__name__]) / len(metric_batch_test[model.metric.__class__.__name__])}")
+                        if model.metric_1 != None:
+                            s += ','
+                            s += (
+                                f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
+                        log.info(s)
+
+    FroNormofweight.append(getFroNormofModel(model))
+    #先全部训练
+    for name, param in model.named_parameters():
+        print(name,param.requires_grad)
+    optimizer = create_optimizer(model, learning_rate=config.learning_rate)
+    for epoch in range(steps-1):
+        metric_batch = {}
+        metric_batch['loss'] = []
+        if model.metric != None:
+            metric_batch[f"{model.metric.__class__.__name__}"] = []
+        if model.metric_1 != None:
+            metric_batch[f"{model.metric_1.__class__.__name__}"] = []
+        iterator = iter(train_epoch_iterator)
+        trange = range(len(train_epoch_iterator))
+        for step in trange:
+            inputs = prepare_inputs(next(iterator), device)
+            model.train()
+            optimizer.zero_grad()
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss(model, inputs)
+            # 惩罚项
+            loss_history.append(step_loss.item())
+            step_loss.backward()
+            train_eval[name1].append(step_metric)
+            if step_metric_1:
+                train_eval[name2].append(step_metric_1)
+
+            optimizer.step()
+            FroNormofweight.append(getFroNormofModel(model))
+
+            metric_batch['loss'].append(step_loss.item())
+            if model.metric != None:
+                metric_batch[f"{model.metric.__class__.__name__}"].append(list(step_metric.values())[0])
+            if model.metric_1 != None:
+                metric_batch[f"{model.metric_1.__class__.__name__}"].append(list(step_metric_1.values())[0])
+
+            if step % l == 0:
+                s = f'train:epoch({epoch})[{step}]/[{length}] lr {optimizer.state_dict()["param_groups"][0]["lr"]} loss {sum(metric_batch["loss"]) / len(metric_batch["loss"])}'
+                if model.metric != None:
+                    s += ','
+                    s += (
+                        f"{model.metric.__class__.__name__}: {sum(metric_batch[model.metric.__class__.__name__]) / len(metric_batch[model.metric.__class__.__name__])}")
+                if model.metric_1 != None:
+                    s += ','
+                    s += (
+                        f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
+                log.info(s)
+                eval_loop()
+            iter_num += 1
+        print(f"********微调epoch{epoch}********")
+        eval_loop()
+    model.zero_grad()
+    # 再冻结原模型
+    for name, param in model.named_parameters():
+        if "bert" in name:
+            param.requires_grad = False
+        else:
+            param.requires_grad = True
+    optimizer = create_optimizer(model, learning_rate=config.learning_rate)
+    for epoch in range(1):
         metric_batch = {}
         metric_batch['loss'] = []
         if model.metric != None:

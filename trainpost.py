@@ -29,8 +29,8 @@ def main():
     print('train data len:', len(train_epoch_iterator))
     # train_eval_loop1(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
     # train_ft_loop1(config, model, train_epoch_iterator, eval_epoch_iterator, optimizer, device, log)
-    train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log)
-    # train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log)
+    # train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log)
+    train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log)
 if __name__ == "__main__":
     main()
 
