@@ -580,14 +580,14 @@ def getFroNormofModel(model):
     FroNorm = 0
     with torch.no_grad():
         for name, module in model.named_modules():
-            if "classifier" not in name and isinstance(module, torch.nn.Linear):
+            if "bert" in name and isinstance(module, torch.nn.Linear):
                 sum = torch.norm(module.weight.data, p='fro').item()
                 FroNorm += sum
     return  FroNorm
 
 def train_eval_loop(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
     """
-    example : !python train.py --dataset mrpc --seed 3404 --epoch 10 --reg 0.001 --reg_1 0.05
+    example : !python train.py --dataset mrpc --seed 3404 --epoch 10 --reg 0.001 --weight_decay 0.05
     """
     loss_history = []
     OneNormofweight = []
@@ -693,7 +693,7 @@ def train_eval_loop(config, model, train_epoch_iterator,eval_epoch_iterator, opt
             inputs = prepare_inputs(next(iterator), device)
             model.train()
             optimizer.zero_grad()
-            step_loss, logit, step_metric, step_metric_1, _ = compute_loss7(model, inputs, config.reg_1)
+            step_loss, logit, step_metric, step_metric_1, _ = compute_loss7(model, inputs, config.weight_decay)
             # 惩罚项
             loss_history.append(step_loss.item())
             step_loss.backward()
@@ -729,24 +729,24 @@ def train_eval_loop(config, model, train_epoch_iterator,eval_epoch_iterator, opt
             iter_num += 1
         print(f"********微调epoch{epoch}********")
         eval_loop()
-    loss_file = f"loss_{config.dataset}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    loss_file = f"loss_{config.dataset}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(loss_history)
     df.to_csv(loss_file, index=False)
 
-    name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(train_eval[name1])
     df.to_csv(name1_file, index=False)
     if model.metric_1 != None:
-        name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+        name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
         df = pd.DataFrame(train_eval[name2])
         df.to_csv(name2_file, index=False)
 
-    weight_file = f"weight_{config.dataset}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    weight_file = f"weight_{config.dataset}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(OneNormofweight)
     df.to_csv(weight_file, index=False)
 def  train_eval_loop1(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
     """
-    example : !python train1.py --dataset mrpc --seed 3404 --epoch 10 --reg 0.001 --reg_1 0.05
+    example : !python train1.py --dataset mrpc --seed 3404 --epoch 10 --reg 0.001 --weight_decay 0.05
     """
     loss_history = []
     label_loss_history = []
@@ -851,7 +851,7 @@ def  train_eval_loop1(config, model, train_epoch_iterator,eval_epoch_iterator, o
             inputs = prepare_inputs(next(iterator), device)
             model.train()
             optimizer.zero_grad()
-            step_loss,label_loss, unlabel_loss, label_logit,unlabel_logit,logit, step_metric, step_metric_1, _ = compute_loss_3(model, inputs,config.reg_1)
+            step_loss,label_loss, unlabel_loss, label_logit,unlabel_logit,logit, step_metric, step_metric_1, _ = compute_loss_3(model, inputs,config.weight_decay)
             # 惩罚项
             loss_history.append(step_loss.item())
             label_loss_history.append(label_loss)
@@ -890,27 +890,27 @@ def  train_eval_loop1(config, model, train_epoch_iterator,eval_epoch_iterator, o
             iter_num += 1
         print(f"********微调epoch{epoch}********")
         eval_loop()
-    loss_file = f"loss_{config.dataset}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    loss_file = f"loss_{config.dataset}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(loss_history)
     df.to_csv(loss_file, index=False)
 
-    label_loss_file = f"label_loss_{config.dataset}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    label_loss_file = f"label_loss_{config.dataset}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(label_loss_history)
     df.to_csv(label_loss_file, index=False)
 
-    unlabel_loss_file = f"unlabel_loss_{config.dataset}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    unlabel_loss_file = f"unlabel_loss_{config.dataset}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(unlabel_loss_history)
     df.to_csv(unlabel_loss_file, index=False)
 
-    label_logit_file = f"label_logit_{config.dataset}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    label_logit_file = f"label_logit_{config.dataset}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(label_logit_history)
     df.to_csv(label_logit_file, index=False)
 
-    unlabel_logit_file = f"unlabel_logit_{config.dataset}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    unlabel_logit_file = f"unlabel_logit_{config.dataset}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(unlabel_logit_history)
     df.to_csv(unlabel_logit_file, index=False)
 
-    weight_file = f"weight_{config.dataset}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    weight_file = f"weight_{config.dataset}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(OneNormofweight)
     df.to_csv(weight_file, index=False)
 def  train_ft_loop(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
@@ -1062,11 +1062,11 @@ def  train_ft_loop(config, model, train_epoch_iterator,eval_epoch_iterator, opti
     df = pd.DataFrame(loss_history)
     df.to_csv(loss_file, index=False)
 
-    name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(train_eval[name1])
     df.to_csv(name1_file, index=False)
     if model.metric_1 != None:
-        name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+        name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
         df = pd.DataFrame(train_eval[name2])
         df.to_csv(name2_file, index=False)
 
@@ -1439,11 +1439,11 @@ def  train_ft_loop2(config, model, train_epoch_iterator,eval_epoch_iterator, opt
     # df = pd.DataFrame(loss_history)
     # df.to_csv(loss_file, index=False)
     #
-    # name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    # name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     # df = pd.DataFrame(train_eval[name1])
     # df.to_csv(name1_file, index=False)
     # if model.metric_1 != None:
-    #     name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    #     name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     #     df = pd.DataFrame(train_eval[name2])
     #     df.to_csv(name2_file, index=False)
 #动态数据剪枝，每2个epoch之后选择50%,并逐渐增大压缩力度
@@ -1888,11 +1888,11 @@ def train_ft_loop4(config, model, train_epoch_iterator, eval_epoch_iterator, opt
 # df = pd.DataFrame(loss_history)
 # df.to_csv(loss_file, index=False)
 #
-# name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+# name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
 # df = pd.DataFrame(train_eval[name1])
 # df.to_csv(name1_file, index=False)
 # if model.metric_1 != None:
-#     name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+#     name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
 #     df = pd.DataFrame(train_eval[name2])
 #     df.to_csv(name2_file, index=False)
 
@@ -2683,7 +2683,7 @@ def statistics_loss_loop(config, model, train_epoch_iterator,eval_epoch_iterator
     """
     统计直接压缩前后模型输出之差（不同batch）
     压缩一次
-    example : !python statistics_loss.py --dataset mrpc --seed 3404 --epoch 1 --reg 5e-7 --reg_1 0.05 --step 0
+    example : !python statistics_loss.py --dataset mrpc --seed 3404 --epoch 1 --reg 5e-7 --weight_decay 0.05 --step 0
     """
     loss_before = []
     loss_after = []
@@ -2712,8 +2712,8 @@ def statistics_loss_loop(config, model, train_epoch_iterator,eval_epoch_iterator
         for step in trange:
             inputs = prepare_inputs(next(iterator), device)
             model.eval()
-            # step_loss, _, _, _, _ = compute_loss7(model, inputs, config.reg_1)
-            step_loss, logit, step_metric, step_metric_1, labels = compute_loss7(model, inputs, config.reg_1)
+            # step_loss, _, _, _, _ = compute_loss7(model, inputs, config.weight_decay)
+            step_loss, logit, step_metric, step_metric_1, labels = compute_loss7(model, inputs, config.weight_decay)
             # 压缩前
             loss_before.append(step_loss.item())
             del step_loss,logit,step_metric,step_metric_1,labels
@@ -2729,13 +2729,13 @@ def statistics_loss_loop(config, model, train_epoch_iterator,eval_epoch_iterator
         for step in trange:
             inputs = prepare_inputs(next(iterator), device)
             model.eval()
-            step_loss, logit, step_metric, step_metric_1, labels = compute_loss7(model, inputs, config.reg_1)
+            step_loss, logit, step_metric, step_metric_1, labels = compute_loss7(model, inputs, config.weight_decay)
             # 压缩后
             loss_after.append(step_loss.item())
             del step_loss,logit,step_metric,step_metric_1,labels
 
     loss_gap = [a-b for a,b in zip(loss_after,loss_before)]
-    loss_gap_file = f"loss_gap_{config.dataset}_{config.reg_1}_{config.reg}_{config.seed}.csv"
+    loss_gap_file = f"loss_gap_{config.dataset}_{config.weight_decay}_{config.reg}_{config.seed}.csv"
     df = pd.DataFrame(loss_gap)
     df.to_csv(loss_gap_file, index=False)
 def statistics_ft_loss_loop(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
@@ -3523,10 +3523,12 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
     FroNormofweight.append(getFroNormofModel(model))
     #先训练分类头
     for name, param in model.named_parameters():
-        if "classifier" in name:
-            param.requires_grad = True
+        if "bert" in name:
+            param.requires_grad = False
         else:
             param.requires_grad = True
+    for name, param in model.named_parameters():
+        print(name,param.requires_grad)
     optimizer = create_optimizer(model, learning_rate=config.learning_rate)
     for epoch in range(1):
         metric_batch = {}
@@ -3626,11 +3628,11 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
     df = pd.DataFrame(loss_history)
     df.to_csv(loss_file, index=False)
 
-    name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+    name1_file = f"loss_{config.dataset}_{name1}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
     df = pd.DataFrame(train_eval[name1])
     df.to_csv(name1_file, index=False)
     if model.metric_1 != None:
-        name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.reg_1}_{config.seed}.csv"
+        name2_file = f"loss_{config.dataset}_{name2}_{config.reg}_{config.weight_decay}_{config.seed}.csv"
         df = pd.DataFrame(train_eval[name2])
         df.to_csv(name2_file, index=False)
 
