@@ -17,3 +17,6 @@ tensor = torch.rand(2, 3, 4)  # 随机生成一个张量
 frobenius_norm = torch.norm(tensor, p='fro')
 
 print("张量的 Frobenius 范数为:", frobenius_norm)
+tensor = torch.tensor([[1.0, -2.0], [3.0, -4.0]])
+sum = torch.norm(tensor, p=1).item()
+print(sum)

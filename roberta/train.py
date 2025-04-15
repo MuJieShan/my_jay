@@ -6,7 +6,7 @@ from customTrainer import *
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from transformers.data.data_collator import DataCollatorWithPadding
 from transformers import RobertaTokenizerFast, RobertaForSequenceClassification, Trainer, TrainingArguments,glue_compute_metrics
-
+from callbacks import *
 
 import time
 def main():
@@ -59,6 +59,9 @@ def main():
         report_to=["tensorboard"],
         remain_loss=remain_loss,
     )
+    WeightNormCallback = getWeightNormCallback(log_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.weight_decay}_{config.epoch}_{config.state}")
+    # from torch.utils.tensorboard import SummaryWriter
+    # tb_writer = SummaryWriter(log_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.weight_decay}_{config.epoch}_{config.state}")
     # 创建Trainer实例
     trainer = GlueTrainer(
         model=model,
@@ -67,6 +70,7 @@ def main():
         eval_dataset=eval_dataset,
         data_collator=data_collator,
         compute_metrics = lambda eval_pred: compute_metrics(eval_pred, task),
+        callbacks=[WeightNormCallback],
     )
     # 开始训练
     trainer.train()

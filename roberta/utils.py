@@ -143,6 +143,23 @@ def compute_loss(model, inputs):
     loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
     return loss
+def get_losses(model, inputs):
+    if "labels" in inputs:
+        labels = inputs["labels"]
+    if "idx" in inputs:
+        idx = inputs.pop("idx")
+    outputs = model(**inputs)
+    if isinstance(outputs, dict) and "loss" not in outputs:
+        raise ValueError(
+            "The model did not return a loss from the inputs, only the following keys: "
+            f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+        )
+
+    logits = outputs['logits']
+    logsoftmax_func = nn.LogSoftmax(dim=-1)
+    logsoftmax_output = logsoftmax_func(logits)
+    losses = -logsoftmax_output[np.arange(logits.size(-2)), labels]
+    return losses
 def compute_outputs(model, inputs):
     if "labels" in inputs:
         labels = inputs.pop("labels")

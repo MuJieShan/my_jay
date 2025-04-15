@@ -8,6 +8,8 @@ from torch import nn
 from tqdm import tqdm
 from transformers import TrainerCallback
 from torch.utils.data.dataloader import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from transformers.integrations import TensorBoardCallback
 def compute_grad(output, parameters, loss_attr: str = "loss"):
     grads = torch.autograd.grad(getattr(output, loss_attr), parameters)
     grads = torch.concat([torch.reshape(g.detach().cpu(), (-1,)) for g in grads])
@@ -176,6 +178,30 @@ class WeightCallback(TrainerCallback):
                     WeightNorm += sum
         with open(f"{args.output_dir}/weight.tsv", "a") as fp:
             fp.write("%f\t%f\n" % (state.epoch, WeightNorm))
+
+
+class WeightNormCallback(TrainerCallback):
+    def __init__(self, tb_writer):
+        self.tb_writer = tb_writer
+
+    def on_epoch_end(self, args, state, control, model=None, **kwargs):
+        epoch = state.epoch
+        FroNorm = 0.0
+        with torch.no_grad():
+            for name, module in model.named_modules():
+                if "classifier" not in name and isinstance(module, torch.nn.Linear):
+                    sum = torch.norm(module.weight.data, p='fro').item()
+                    # sum = torch.norm(module.weight.data, p=1).item()
+                    FroNorm += sum
+        with open(f"{args.output_dir}/weight.tsv", "a") as fp:
+            fp.write("%f\t%f\n" % (state.epoch, FroNorm))
+
+        self.tb_writer.add_scalar('Weight Norm', FroNorm, epoch)
+        self.tb_writer.flush()
+
+def getWeightNormCallback(log_dir=''):
+    tb_writer = SummaryWriter(log_dir=log_dir)
+    return WeightNormCallback(tb_writer)
 
 
 

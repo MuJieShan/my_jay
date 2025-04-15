@@ -3429,7 +3429,7 @@ def  train_lp_loop1(config, model, train_epoch_iterator,train_dataloader1,eval_e
 #先冻结原模型，只训练分类头
 def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
     """
-    example : !python train1.py --dataset sst2 --seed 3404 --epoch 4
+    example : !python train1.py --dataset sst2 --seed 3404 --epoch 10
     """
     loss_history = []
     FroNormofweight = []
@@ -3528,8 +3528,6 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
             param.requires_grad = False
         else:
             param.requires_grad = True
-    for name, param in model.named_parameters():
-        print(name,param.requires_grad)
     optimizer = create_optimizer(model, learning_rate=config.learning_rate)
     for epoch in range(1):
         metric_batch = {}
@@ -3553,7 +3551,6 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
                 train_eval[name2].append(step_metric_1)
 
             optimizer.step()
-            FroNormofweight.append(getFroNormofModel(model))
 
             metric_batch['loss'].append(step_loss.item())
             if model.metric != None:
@@ -3575,6 +3572,7 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
                 eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
+        FroNormofweight.append(getFroNormofModel(model))
         eval_loop()
     model.zero_grad()
     # 再一起训练
@@ -3602,7 +3600,6 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
                 train_eval[name2].append(step_metric_1)
 
             optimizer.step()
-            FroNormofweight.append(getFroNormofModel(model))
 
             metric_batch['loss'].append(step_loss.item())
             if model.metric != None:
@@ -3624,6 +3621,7 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
                 eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
+        FroNormofweight.append(getFroNormofModel(model))
         eval_loop()
     loss_file = f"loss_ft_{config.dataset}_{config.reg}_{config.seed}.csv"
     df = pd.DataFrame(loss_history)
@@ -3644,7 +3642,7 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
 #先全部训练，再冻结原模型
 def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
     """
-    example : !python trainpost.py --dataset sst2 --seed 3404 --epoch 4
+    example : !python trainpost.py --dataset sst2 --seed 3404 --epoch 10
     """
     loss_history = []
     FroNormofweight = []
@@ -3738,8 +3736,6 @@ def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, o
 
     FroNormofweight.append(getFroNormofModel(model))
     #先全部训练
-    for name, param in model.named_parameters():
-        print(name,param.requires_grad)
     optimizer = create_optimizer(model, learning_rate=config.learning_rate)
     for epoch in range(steps-1):
         metric_batch = {}
@@ -3763,7 +3759,6 @@ def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, o
                 train_eval[name2].append(step_metric_1)
 
             optimizer.step()
-            FroNormofweight.append(getFroNormofModel(model))
 
             metric_batch['loss'].append(step_loss.item())
             if model.metric != None:
@@ -3785,6 +3780,8 @@ def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, o
                 eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
+        FroNormofweight.append(getFroNormofModel(model))
+
         eval_loop()
     model.zero_grad()
     # 再冻结原模型
@@ -3815,7 +3812,6 @@ def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, o
                 train_eval[name2].append(step_metric_1)
 
             optimizer.step()
-            FroNormofweight.append(getFroNormofModel(model))
 
             metric_batch['loss'].append(step_loss.item())
             if model.metric != None:
@@ -3837,6 +3833,7 @@ def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, o
                 eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
+        FroNormofweight.append(getFroNormofModel(model))
         eval_loop()
     loss_file = f"loss_ft_{config.dataset}_{config.reg}_{config.seed}.csv"
     df = pd.DataFrame(loss_history)
