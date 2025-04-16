@@ -23,5 +23,12 @@ do
     eval $python_command
 done
 
-
 #python ../../traindata12_frozen.py --state ft --dataset sst2 --seed 3404 --reg 5e-8 --weight_decay 0.002 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --pruneFlag up --batchsize 32 --learning_rate 2e-5
+
+python roberta/traindata12_frozen.py --state ft --dataset sst2 --seed 3404 --pruneFlag up --reg 5e-8 --weight_decay 0 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --learning_rate 2e-5
+python roberta/traindata12_frozen.py --state ft --dataset sst2 --seed 3404 --pruneFlag down --reg 5e-8 --weight_decay 0 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --learning_rate 2e-5
+python roberta/traindata12_frozen.py --state ft --dataset sst2 --seed 3404 --pruneFlag random --reg 5e-8 --weight_decay 0 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --learning_rate 2e-5
+
+python roberta/traindata12_0_frozen.py --state ft --dataset sst2 --seed 3404 --pruneFlag up --reg 5e-8 --weight_decay 0 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --learning_rate 2e-5
+python roberta/traindata12_0_frozen.py --state ft --dataset sst2 --seed 3404 --pruneFlag down --reg 5e-8 --weight_decay 0 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --learning_rate 2e-5
+python roberta/traindata12_0_frozen.py --state ft --dataset sst2 --seed 3404 --pruneFlag random --reg 5e-8 --weight_decay 0 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --learning_rate 2e-5
