@@ -208,11 +208,11 @@ def main():
     with torch.no_grad():
         for name, module in model.named_modules():
             if "classifier" not in name and isinstance(module, torch.nn.Linear):
-                sum = torch.norm(module.weight.data, p='fro').item()
+                sum = torch.norm(module.weight.data, p=1).item()
                 FroNorm += sum
     s = f"initial weight norm: {FroNorm}"
     log.info(s)
-    WeightNormCallback = getWeightNormCallback(log_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}")
+    WeightNormCallback = getWeightNormCallback(log_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",initmodel=model)
     # 创建Trainer实例
     trainer = GlueTrainer(
         model=model,

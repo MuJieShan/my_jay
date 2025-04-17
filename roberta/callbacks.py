@@ -10,6 +10,7 @@ from transformers import TrainerCallback
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from transformers.integrations import TensorBoardCallback
+import copy
 def compute_grad(output, parameters, loss_attr: str = "loss"):
     grads = torch.autograd.grad(getattr(output, loss_attr), parameters)
     grads = torch.concat([torch.reshape(g.detach().cpu(), (-1,)) for g in grads])
@@ -181,27 +182,51 @@ class WeightCallback(TrainerCallback):
 
 
 class WeightNormCallback(TrainerCallback):
-    def __init__(self, tb_writer):
+    def __init__(self, tb_writer,initmodel):
         self.tb_writer = tb_writer
+        self.old_model = copy.deepcopy(initmodel)
 
     def on_epoch_end(self, args, state, control, model=None, **kwargs):
         epoch = state.epoch
+        # before = 0.0
+        # with torch.no_grad():
+        #     for name, module in self.old_model.named_modules():
+        #         if "classifier" not in name and isinstance(module, torch.nn.Linear):
+        #             sum = torch.norm(module.weight.data, p=1).item()
+        #             # sum = torch.norm(module.weight.data, p=1).item()
+        #             before += sum
+        # with open(f"{args.output_dir}/weightbefore.tsv", "a") as fp:
+        #     fp.write("%f\t%f\n" % (state.epoch, before))
+
         FroNorm = 0.0
         with torch.no_grad():
-            for name, module in model.named_modules():
-                if "classifier" not in name and isinstance(module, torch.nn.Linear):
-                    sum = torch.norm(module.weight.data, p='fro').item()
-                    # sum = torch.norm(module.weight.data, p=1).item()
-                    FroNorm += sum
+            for name, old_module in self.old_model.named_modules():
+                if "classifier" not in name and isinstance(old_module, torch.nn.Linear):
+                    new_module = model.get_submodule(name)
+                    for old_param, new_param in zip(old_module.parameters(), new_module.parameters()):
+                        param_diff = new_param - old_param
+                        sum = torch.norm(param_diff, p=1).item()
+                        FroNorm += sum
         with open(f"{args.output_dir}/weight.tsv", "a") as fp:
             fp.write("%f\t%f\n" % (state.epoch, FroNorm))
-
+        self.old_model.load_state_dict(model.state_dict())
+        # after = 0.0
+        # with torch.no_grad():
+        #     for name, module in model.named_modules():
+        #         if "classifier" not in name and isinstance(module, torch.nn.Linear):
+        #             sum = torch.norm(module.weight.data, p=1).item()
+        #             # sum = torch.norm(module.weight.data, p=1).item()
+        #             after += sum
+        # gap = after - before
+        # with open(f"{args.output_dir}/gap.tsv", "a") as fp:
+        #     fp.write("%f\t%f\n" % (state.epoch, gap))
         self.tb_writer.add_scalar('Weight Norm', FroNorm, epoch)
         self.tb_writer.flush()
+        torch.cuda.empty_cache()
 
-def getWeightNormCallback(log_dir=''):
+def getWeightNormCallback(log_dir='',initmodel=None):
     tb_writer = SummaryWriter(log_dir=log_dir)
-    return WeightNormCallback(tb_writer)
+    return WeightNormCallback(tb_writer,initmodel)
 
 
 

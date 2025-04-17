@@ -59,7 +59,7 @@ def main():
         report_to=["tensorboard"],
         remain_loss=remain_loss,
     )
-    WeightNormCallback = getWeightNormCallback(log_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.weight_decay}_{config.epoch}_{config.state}")
+    WeightNormCallback = getWeightNormCallback(log_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.weight_decay}_{config.epoch}_{config.state}",initmodel=model)
     # from torch.utils.tensorboard import SummaryWriter
     # tb_writer = SummaryWriter(log_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.weight_decay}_{config.epoch}_{config.state}")
     # 创建Trainer实例
