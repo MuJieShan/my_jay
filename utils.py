@@ -590,7 +590,7 @@ def get1Normofwg(old_model,new_model):
     oneNorm = 0.0
     with torch.no_grad():
         for name, old_module in old_model.named_modules():
-            if "classifier" not in name and isinstance(old_module, torch.nn.Linear):
+            if "bert" in name and isinstance(old_module, torch.nn.Linear):
                 new_module = new_model.get_submodule(name)
                 for old_param, new_param in zip(old_module.parameters(), new_module.parameters()):
                     param_diff = new_param - old_param
