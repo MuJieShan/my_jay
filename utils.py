@@ -3582,7 +3582,7 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
                     s += (
                         f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
                 log.info(s)
-                eval_loop()
+                # eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
         FroNormofweight.append(get1Normofwg(old_model=old_model,new_model=model))
@@ -3632,7 +3632,7 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
                     s += (
                         f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
                 log.info(s)
-                eval_loop()
+                # eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
         FroNormofweight.append(get1Normofwg(old_model=old_model, new_model=model))
@@ -3792,7 +3792,7 @@ def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, o
                     s += (
                         f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
                 log.info(s)
-                eval_loop()
+                # eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
         FroNormofweight.append(get1Normofwg(old_model=old_model, new_model=model))
@@ -3846,7 +3846,7 @@ def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, o
                     s += (
                         f"{model.metric_1.__class__.__name__}: {sum(metric_batch[model.metric_1.__class__.__name__]) / len(metric_batch[model.metric_1.__class__.__name__])}")
                 log.info(s)
-                eval_loop()
+                # eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
         FroNormofweight.append(get1Normofwg(old_model=old_model, new_model=model))
