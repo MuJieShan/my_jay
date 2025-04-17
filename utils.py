@@ -23,6 +23,7 @@ from tqdm import tqdm
 import copy
 from dataPruner import *
 import operator
+import csv
 def get_loss(model, inputs):
     # layer_sums = 0
     # for (name, module) in model.named_modules():
@@ -584,6 +585,18 @@ def getFroNormofModel(model):
                 sum = torch.norm(module.weight.data, p='fro').item()
                 FroNorm += sum
     return  FroNorm
+
+def get1Normofwg(old_model,new_model):
+    oneNorm = 0.0
+    with torch.no_grad():
+        for name, old_module in old_model.named_modules():
+            if "classifier" not in name and isinstance(old_module, torch.nn.Linear):
+                new_module = new_model.get_submodule(name)
+                for old_param, new_param in zip(old_module.parameters(), new_module.parameters()):
+                    param_diff = new_param - old_param
+                    sum = torch.norm(param_diff, p=1).item()
+                    oneNorm += sum
+    return oneNorm
 
 def train_eval_loop(config, model, train_epoch_iterator,eval_epoch_iterator, optimizer, device, log):
     """
@@ -3521,7 +3534,7 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
                                 f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
                         log.info(s)
 
-    FroNormofweight.append(getFroNormofModel(model))
+    old_model = copy.deepcopy(model)
     #先训练分类头
     for name, param in model.named_parameters():
         if "bert" in name:
@@ -3572,7 +3585,8 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
                 eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
-        FroNormofweight.append(getFroNormofModel(model))
+        FroNormofweight.append(get1Normofwg(old_model=old_model,new_model=model))
+        old_model.load_state_dict(model.state_dict())
         eval_loop()
     model.zero_grad()
     # 再一起训练
@@ -3621,7 +3635,8 @@ def  train_prefrozen(config, model, train_epoch_iterator,eval_epoch_iterator, op
                 eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
-        FroNormofweight.append(getFroNormofModel(model))
+        FroNormofweight.append(get1Normofwg(old_model=old_model, new_model=model))
+        old_model.load_state_dict(model.state_dict())
         eval_loop()
     loss_file = f"loss_ft_{config.dataset}_{config.reg}_{config.seed}.csv"
     df = pd.DataFrame(loss_history)
@@ -3734,7 +3749,7 @@ def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, o
                                 f"{model.metric_1.__class__.__name__}: {sum(metric_batch_test[model.metric_1.__class__.__name__]) / len(metric_batch_test[model.metric_1.__class__.__name__])}")
                         log.info(s)
 
-    FroNormofweight.append(getFroNormofModel(model))
+    old_model = copy.deepcopy(model)
     #先全部训练
     optimizer = create_optimizer(model, learning_rate=config.learning_rate)
     for epoch in range(steps-1):
@@ -3780,7 +3795,8 @@ def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, o
                 eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
-        FroNormofweight.append(getFroNormofModel(model))
+        FroNormofweight.append(get1Normofwg(old_model=old_model, new_model=model))
+        old_model.load_state_dict(model.state_dict())
 
         eval_loop()
     model.zero_grad()
@@ -3833,7 +3849,8 @@ def  train_postfrozen(config, model, train_epoch_iterator,eval_epoch_iterator, o
                 eval_loop()
             iter_num += 1
         print(f"********微调epoch{epoch}********")
-        FroNormofweight.append(getFroNormofModel(model))
+        FroNormofweight.append(get1Normofwg(old_model=old_model, new_model=model))
+        old_model.load_state_dict(model.state_dict())
         eval_loop()
     loss_file = f"loss_ft_{config.dataset}_{config.reg}_{config.seed}.csv"
     df = pd.DataFrame(loss_history)
