@@ -11,6 +11,7 @@ from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from transformers.integrations import TensorBoardCallback
 import copy
+import csv
 def compute_grad(output, parameters, loss_attr: str = "loss"):
     grads = torch.autograd.grad(getattr(output, loss_attr), parameters)
     grads = torch.concat([torch.reshape(g.detach().cpu(), (-1,)) for g in grads])
@@ -207,8 +208,9 @@ class WeightNormCallback(TrainerCallback):
                         param_diff = new_param - old_param
                         sum = torch.norm(param_diff, p=1).item()
                         FroNorm += sum
-        with open(f"{args.output_dir}/weight.tsv", "a") as fp:
-            fp.write("%f\t%f\n" % (state.epoch, FroNorm))
+        with open(f"{args.output_dir}/weight1norm.csv", "a", newline='') as fp:
+            csv_writer = csv.writer(fp)
+            csv_writer.writerow([state.epoch, FroNorm])
         self.old_model.load_state_dict(model.state_dict())
         # after = 0.0
         # with torch.no_grad():
