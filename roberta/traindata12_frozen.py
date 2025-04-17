@@ -214,7 +214,7 @@ def main():
     with torch.no_grad():
         for name, module in model.named_modules():
             if "classifier" not in name and isinstance(module, torch.nn.Linear):
-                sum = torch.norm(module.weight.data, p='fro').item()
+                sum = torch.norm(module.weight.data, p=1).item()
                 FroNorm += sum
     s = f"initial weight norm: {FroNorm}"
     log.info(s)
@@ -259,4 +259,4 @@ if __name__ == "__main__":
     #剪枝标准：
             #模型对样本的损失颗粒的绝对值
     #接着训练,筛选阶段冻结前馈头
-    #python ../../traindata12_frozen.py --state ft --dataset sst2 --seed 3404 --reg 5e-8 --weight_decay 0 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --pruneFlag up --batchsize 32 --learning_rate 2e-5
+    #python roberta/traindata12_frozen.py --state ft --dataset sst2 --seed 3404 --pruneFlag up --reg 5e-8 --weight_decay 0 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --learning_rate 2e-5
