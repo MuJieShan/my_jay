@@ -38,40 +38,61 @@ class GLUEPruner():
         self.cur_index = index
         self.iteration += 1
 
+    # def prune(self):
+    #     if self.iteration==0:
+    #         remain_indices=np.arange(len(self.dataset))
+    #         np.random.shuffle(remain_indices)
+    #         self.cur_index = remain_indices
+    #         self.iteration += 1
+    #         return
+    #     def fraction_threshold(tensor, fraction):
+    #         if (self.state == "up"):
+    #             threshold, _ = torch.topk(tensor, int((fraction) * len(tensor)))
+    #         else:
+    #             threshold, _ = torch.topk(-tensor, int((fraction) * len(tensor)))
+    #             threshold = -threshold
+    #         return threshold[-1]
+    #
+    #     def threshold_mask(tensor, threshold):
+    #         assert isinstance(tensor, torch.Tensor)
+    #         if (self.state == "up"):
+    #             idx = tensor < threshold
+    #         else:
+    #             idx = tensor > threshold
+    #         mask = torch.ones_like(tensor, device=torch.device('cuda:0'))
+    #         mask[idx] = 0
+    #         return mask
+    #     print(self.keep_ratio)
+    #     threshold = fraction_threshold(self.scores, self.keep_ratio)
+    #
+    #     remain_mask = threshold_mask(self.scores, threshold).cpu().numpy().astype(bool)
+    #
+    #     remain_indices = np.where(remain_mask)[0]
+    #     print('remain_samples',len(remain_indices))
+    #     np.random.shuffle(remain_indices)
+    #     self.cur_index=remain_indices
+    #     self.iteration+=1
+
     def prune(self):
-        if self.iteration==0:
-            remain_indices=np.arange(len(self.dataset))
+        if self.iteration == 0:
+            remain_indices = np.arange(len(self.dataset))
             np.random.shuffle(remain_indices)
             self.cur_index = remain_indices
             self.iteration += 1
             return
-        def fraction_threshold(tensor, fraction):
-            if (self.state == "up"):
-                threshold, _ = torch.topk(tensor, int((fraction) * len(tensor)))
-            else:
-                threshold, _ = torch.topk(-tensor, int((fraction) * len(tensor)))
-                threshold = -threshold
-            return threshold[-1]
 
-        def threshold_mask(tensor, threshold):
-            assert isinstance(tensor, torch.Tensor)
-            if (self.state == "up"):
-                idx = tensor < threshold
-            else:
-                idx = tensor > threshold
-            mask = torch.ones_like(tensor, device=torch.device('cuda:0'))
-            mask[idx] = 0
-            return mask
         print(self.keep_ratio)
-        threshold = fraction_threshold(self.scores, self.keep_ratio)
+        keep_num = int(self.keep_ratio * len(self.scores))
+        if self.state == "up":
+            _, remain_indices = torch.topk(self.scores, keep_num)
+        else:
+            _, remain_indices = torch.topk(-self.scores, keep_num)
 
-        remain_mask = threshold_mask(self.scores, threshold).cpu().numpy().astype(bool)
-
-        remain_indices = np.where(remain_mask)[0]
-        print('remain_samples',len(remain_indices))
+        remain_indices = remain_indices.cpu().numpy()
+        print('remain_samples', len(remain_indices))
         np.random.shuffle(remain_indices)
-        self.cur_index=remain_indices
-        self.iteration+=1
+        self.cur_index = remain_indices
+        self.iteration += 1
 
     def pro_loss(self,loss):
         loss *= 1 / self.keep_ratio
