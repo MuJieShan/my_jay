@@ -94,6 +94,9 @@ def main():
     )
     trainer.train()
     print("结束冻结预先训练")
+    s = f'{trainer.evaluate(eval_dataset)}'
+    print(s)
+    log.info(f'\n{s}\n')
     end_time = time.time()
     total_time = end_time - start_time
     s = f'Total training time: {total_time}'
