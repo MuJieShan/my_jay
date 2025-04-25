@@ -74,7 +74,7 @@ def main():
         output_dir=f"./log/model/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",
         logging_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",
         logging_steps=10,
-        # load_best_model_at_end=True,
+        load_best_model_at_end=True,
         report_to=["tensorboard"],
     )
     # del model,tokenizer

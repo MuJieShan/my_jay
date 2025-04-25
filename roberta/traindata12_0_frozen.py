@@ -41,7 +41,7 @@ def main():
         print("开始预先训练")
         train_dataset = trainset
         data_collator = DataCollatorWithPadding(tokenizer)
-        eval_steps = len(train_epoch_iterator) // 2
+        eval_steps = 10
         # 定义训练参数
         training_args = GlueTrainingArguments(
             state=config.state,
@@ -70,6 +70,7 @@ def main():
             metric_for_best_model=GLUE_METRIC[task],
             greater_is_better=True,
             save_safetensors=False,
+            save_total_limit=1,
             # logging_args
             output_dir=f"./log/model/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",
             load_best_model_at_end=True,
