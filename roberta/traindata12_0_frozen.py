@@ -193,6 +193,7 @@ def main():
         metric_for_best_model=GLUE_METRIC[task],
         greater_is_better=True,
         save_safetensors=False,
+        save_total_limit=1,
         #logging_args
         output_dir=f"./log/model/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",
         logging_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",
@@ -232,11 +233,11 @@ def main():
     trainer.save_model(training_args.output_dir)
     tokenizer.save_pretrained(training_args.output_dir)
 
-    import glob,shutil
-    checkpoint_files = glob.glob(os.path.join(training_args.output_dir, "checkpoint-*"))
-    for file in checkpoint_files:
-        shutil.rmtree(file)
-        print(f"Deleted checkpoint file: {file}")
+    # import glob,shutil
+    # checkpoint_files = glob.glob(os.path.join(training_args.output_dir, "checkpoint-*"))
+    # for file in checkpoint_files:
+    #     shutil.rmtree(file)
+    #     print(f"Deleted checkpoint file: {file}")
     if remain_loss:
         loss_history = trainer.get_training_loss()
         loss_file = f"{training_args.output_dir}/loss_{training_args.task_name}_{config.target_ratio}_{training_args.weight_decay}_{training_args.seed}_{training_args.num_train_epochs}_{training_args.state}_{config.reg}_{config.pruneFlag}.csv"

@@ -240,11 +240,11 @@ def main():
     trainer.save_model(training_args.output_dir)
     tokenizer.save_pretrained(training_args.output_dir)
 
-    import glob,shutil
-    checkpoint_files = glob.glob(os.path.join(training_args.output_dir, "checkpoint-*"))
-    for file in checkpoint_files:
-        shutil.rmtree(file)
-        print(f"Deleted checkpoint file: {file}")
+    # import glob,shutil
+    # checkpoint_files = glob.glob(os.path.join(training_args.output_dir, "checkpoint-*"))
+    # for file in checkpoint_files:
+    #     shutil.rmtree(file)
+    #     print(f"Deleted checkpoint file: {file}")
 
     if remain_loss:
         loss_history = trainer.get_training_loss()
