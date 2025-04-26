@@ -291,7 +291,7 @@ def get_dataloader3(task:str, model_checkpoint:str,dataloader_drop_last:bool=Tru
     #                                        'idx': list(range(len(train_dataset)))})
     train_dataloader = DataLoader(
         train_dataset,
-        shuffle=shuffle,
+        shuffle=False,
         batch_size=1,#batch_size*4,
         collate_fn=data_collator,
         # drop_last=dataloader_drop_last,
