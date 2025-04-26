@@ -27,6 +27,7 @@ def main():
     if config.remain_loss == 1:
         remain_loss = True
     #Load model and tokenizer
+
     model,tokenizer = get_model_and_tokenizer(model_checkpoint,task,device)
     # Load DataLoader
     print(f"\nLoading data...")

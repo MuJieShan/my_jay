@@ -32,6 +32,7 @@ def main():
     print(f"\nLoading data...")
     train_dataloader, eval_dataset, trainset = get_dataloader3(task, model_checkpoint, tokenizer=tokenizer,shuffle=config.shuffle,batch_size=batch_size)
     # data pruning
+
     compress = config.reg
     data_p = GLUEPruner(dataset=trainset, ratio=config.target_ratio, pruneFlag=config.pruneFlag)
     data_p.prune()
