@@ -5,7 +5,6 @@ dataset='all'
 model="bert-base-uncased"
 target_ratio=0.5
 
-#python ../../traindata12.py --state ft --dataset sst2 --seed 3404 --reg 5e-8 --weight_decay 0.002 --epoch0 1 --epoch 10 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --pruneFlag up --batchsize 32 --learning_rate 2e-5
 epoch=5
 batchsize=64
 weight_decay=0

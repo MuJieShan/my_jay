@@ -1682,6 +1682,33 @@ def show_lossgap_1_8(filenamelist):
     plt.tight_layout()
     # plt.suptitle('sst-2', fontsize=18)
     plt.show()
+def show_pt_lp(file):
+    data_dict = torch.load(file)  # 替换为你的文件路径
+
+    # 转换为Python字典（如果尚未是字典格式）
+    if isinstance(data_dict, torch.Tensor):
+        data_dict = data_dict.numpy().item()  # 处理单元素张量情况
+    elif isinstance(data_dict, torch.Tensor):
+        data_dict = data_dict.tolist()  # 处理张量转字典
+
+    # 提取ID和分数
+    ids = list(data_dict.keys())
+    scores = list(data_dict.values())
+    scores1 = np.array(list(data_dict.values()))
+    zero_count = np.sum(scores1 == 0)
+    print(f"分数为 0 的样本数量: {zero_count}")
+    print(f"共加载 {len(ids)} 个样本")
+    print(f"示例数据：ID={ids[0]}, Score={scores[0]}")
+    plt.figure(figsize=(10, 6))
+    plt.scatter(ids, scores, alpha=0.6, edgecolors='w', linewidth=0.5)
+
+    plt.title('Sample Importance Scores Distribution', fontsize=14)
+    plt.xlabel('Sample ID', fontsize=12)
+    plt.ylabel('Importance Score', fontsize=12)
+    plt.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
 if __name__ == '__main__':
     #1-2
     file=['实验/1-2/bert-loss_gap_sst2_0.0_5e-08_3404.csv','实验/1-2/roberta-loss_gap_sst2_0.0_5e-08_3404.csv','实验/1-2/gpt2-loss_gap_sst2_0.0_5e-08_3404.csv','实验/1-2/t5-loss_gap_sst2_0.0_5e-08_3404.csv']
@@ -1696,7 +1723,7 @@ if __name__ == '__main__':
     file="实验/1-7/loss_gap_mrpc_0.0_5e-08_3404.csv"
     # show_loss_gap(file)
     file = ["实验/1-8/loss_gap_sst2_0.0_5e-08_3404.csv","实验/1-8/loss_gap_stsb_0.0_5e-08_3404.csv"]
-    show_lossgap_1_8(file)
+    # show_lossgap_1_8(file)
     #2-1
     file3 = [["实验/2-1/pooler_gap_1_mrpc_5e-08_42.csv","实验/2-1/pooler_gap_0_mrpc_5e-08_42.csv"],
              ["实验/2-1/pooler_gap_0_sst2_5e-08_3404.csv","实验/2-1/pooler_gap_1_sst2_5e-08_3404.csv"]]
@@ -1744,7 +1771,4 @@ if __name__ == '__main__':
     # show_loss_gaps_2(file3)
     loss = "32/pooler_gap_1_mrpc_5e-07_3404.csv"
     # show_loss_gap_(loss)
-    print(3.5762786865234375e-07/5.960464577539063e-08)
-    a=(7.43%2.1)/2.1
-    b=(7.43/2.1)%1
-    print(a,b)
+    show_pt_lp("颗粒/sst2_3404_up_0.5_0.0_5e-07_2_loss_gap.pt")

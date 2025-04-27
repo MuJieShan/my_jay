@@ -42,7 +42,7 @@ def main():
         print("开始预先训练")
         train_dataset = trainset
         data_collator = DataCollatorWithPadding(tokenizer)
-        eval_steps = 10
+        eval_steps = len(train_epoch_iterator) // 10
         # 定义训练参数
         training_args = GlueTrainingArguments(
             state=config.state,
@@ -165,7 +165,7 @@ def main():
         raise ValueError("pruneFlag must be 'up','down','random' or 'full'")
     print("开始训练")
     data_collator = DataCollatorWithPadding(tokenizer)
-    eval_steps = len(train_epoch_iterator)//3
+    eval_steps = len(train_epoch_iterator)//4
     # 定义训练参数
     training_args = GlueTrainingArguments(
         state=config.state,
@@ -186,10 +186,10 @@ def main():
         optim=config.optim,
 
         #eval_args
-        eval_strategy="epoch",
-        # eval_steps=eval_steps,# "steps","epoch"# eval_steps=50,
-        save_strategy="epoch",
-        # save_steps=1e+6,
+        eval_strategy="steps",
+        eval_steps=eval_steps,# "steps","epoch"# eval_steps=50,
+        save_strategy="steps",
+        save_steps=eval_steps,
         save_only_model=True,
         metric_for_best_model=GLUE_METRIC[task],
         greater_is_better=True,
