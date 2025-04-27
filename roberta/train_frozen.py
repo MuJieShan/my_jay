@@ -142,6 +142,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
     #只训练前馈头，观察训练过程变化
     # python roberta/train_frozen.py --state ft --dataset sst2 --seed 3404 --pruneFlag up --reg 5e-8 --weight_decay 0.0 --epoch 10 --epoch0 1 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --optim adamw_torch
