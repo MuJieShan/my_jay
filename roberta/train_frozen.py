@@ -97,6 +97,44 @@ def main():
     s = f'{trainer.evaluate(eval_dataset)}'
     print(s)
     log.info(f'\n{s}\n')
+    loss_before = {}
+    loss_after = {}
+    iterator = iter(train_epoch_iterator)
+    trange = range(len(train_epoch_iterator))
+
+    before = tqdm(total=len(train_epoch_iterator), desc=f"lp before")
+    for step in trange:
+        before.update(1)
+        inputs = prepare_inputs(next(iterator), device)
+        model.eval()
+        step_idx = inputs["idx"]
+        with torch.no_grad():
+            losses = get_losses(model, inputs)
+        for i in range(len(step_idx)):
+            loss_before[step_idx[i].item()] = losses[i]
+    before.close()
+    with torch.no_grad():
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                r = 1 - compress
+                module.weight.data = r * module.weight.data
+    iterator = iter(train_epoch_iterator)
+    trange = range(len(train_epoch_iterator))
+    after = tqdm(total=len(train_epoch_iterator), desc=f"lp after")
+    for step in trange:
+        after.update(1)
+        inputs = prepare_inputs(next(iterator), device)
+        model.eval()
+        step_idx = inputs["idx"]
+        with torch.no_grad():
+            losses = get_losses(model, inputs)
+        for i in range(len(step_idx)):
+            loss_after[step_idx[i].item()] = losses[i]
+    after.close()
+    keys = sorted(loss_before.keys())
+    loss_gap = {key: torch.abs(loss_after[key] - loss_before[key]).item() for key in keys}
+    output_file = f"./log/model/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}_loss_gap.pt"
+    torch.save(loss_gap, output_file)
     end_time = time.time()
     total_time = end_time - start_time
     s = f'Total training time: {total_time}'
