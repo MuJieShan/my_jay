@@ -133,7 +133,7 @@ def main():
     after.close()
     keys = sorted(loss_before.keys())
     loss_gap = {key: torch.abs(loss_after[key] - loss_before[key]).item() for key in keys}
-    output_file = f"./log/model/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}_loss_gap.pt"
+    output_file = f"./log/model/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}_{config.epoch0}_loss_gap.pt"
     torch.save(loss_gap, output_file)
     end_time = time.time()
     total_time = end_time - start_time
