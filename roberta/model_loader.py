@@ -5,7 +5,7 @@ def get_model_and_tokenizer(model_checkpoint,task_name,device):
     num_labels = 1 if task_name == "stsb" else 3 if "mnli" in task_name  else 2
     tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
     if "llama" in model_checkpoint or "Llama" in model_checkpoint:
-        model = AutoModelForSequenceClassification.from_pretrained(model_checkpoint, num_labels=num_labels,device_map="auto",torch_dtype=torch.float16)
+        model = AutoModelForSequenceClassification.from_pretrained(model_checkpoint, num_labels=num_labels,device_map="auto",torch_dtype=torch.float32)
         if tokenizer.pad_token is None:
             tokenizer.add_special_tokens({"pad_token": "<pad>"})
             tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<pad>")
