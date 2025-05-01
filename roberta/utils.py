@@ -224,7 +224,8 @@ def compute_logits_pooler_output(model, inputs):
     return outputs['logits'].flatten(),pooler_output.flatten()
 
 def get_pooler_output(model, inputs):
-    from transformers import BertForSequenceClassification, RobertaForSequenceClassification,GPT2ForSequenceClassification,T5ForSequenceClassification
+    from transformers import BertForSequenceClassification, RobertaForSequenceClassification,GPT2ForSequenceClassification,T5ForSequenceClassification,LlamaForSequenceClassification
+    from peft.peft_model import PeftModelForSequenceClassification
     if "labels" in inputs:
         labels = inputs.pop("labels")
     if "idx" in inputs:
@@ -267,11 +268,19 @@ def get_pooler_output(model, inputs):
         x = dropout(x)
         x = dense(x)
         pooler_output = tanh(x)
-    # gpt2
-    elif isinstance(model, GPT2ForSequenceClassification):
-        pooler_output=outputs.hidden_states[-1][:, -1, :]
+    # gpt2 or llama
+    elif isinstance(model, (GPT2ForSequenceClassification, LlamaForSequenceClassification,PeftModelForSequenceClassification)):
+        input_ids = inputs["input_ids"]
+        sequence_lengths = torch.eq(input_ids, model.config.pad_token_id).int().argmax(-1) - 1
+        sequence_lengths = sequence_lengths % input_ids.shape[-1]
+        sequence_lengths = sequence_lengths
+        score = model.score
+        pooler_output = outputs.hidden_states[-1][torch.arange(input_ids.shape[-2]), sequence_lengths].to(model.score.weight.device)  # gpt2的分类头的输入
+
+        # x = score(x)
+        # print(x)
     else:
-        print("no model")
+        print(type(model))
 
     return pooler_output.flatten()
     # x = dropout(x)

@@ -164,9 +164,61 @@ def main():
     else:
         raise ValueError("pruneFlag must be 'up','down','random' or 'full'")
     print("开始训练")
-
+    model2, _ = get_model_and_tokenizer(model_checkpoint, task, device)
+    model = model2
     data_collator = DataCollatorWithPadding(tokenizer)
-    eval_steps = len(train_epoch_iterator)//4
+    eval_steps = len(train_epoch_iterator) // 4
+    for name, param in model.named_parameters():
+        if "classifier" in name:
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
+        # 定义训练参数
+        training_args = GlueTrainingArguments(
+            state=config.state,
+            # training_args
+            seed=config.seed,
+            learning_rate=config.learning_rate,
+            lr_scheduler_type="constant",
+            num_train_epochs=1,
+            per_device_train_batch_size=batch_size,
+            per_device_eval_batch_size=batch_size,
+            # warmup_ratio=0.1,
+            warmup_steps=0,
+            weight_decay=config.weight_decay,
+            do_train=True,
+            reg=config.reg,
+            task_name=task,
+            shuffle=config.shuffle,
+            optim=config.optim,
+
+            # eval_args
+            eval_strategy="steps",
+            eval_steps=eval_steps,  # "steps","epoch"# eval_steps=50,
+            # save_strategy="steps",
+            # save_steps=eval_steps,
+            # save_only_model=True,
+            # metric_for_best_model=GLUE_METRIC[task],
+            # greater_is_better=True,
+            # save_safetensors=False,
+            # save_total_limit=1,
+            # logging_args
+            output_dir=f"./log/model/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",
+            logging_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",
+            logging_steps=50,
+            load_best_model_at_end=False,
+            report_to=["tensorboard"],
+            remain_loss=remain_loss,
+        )
+    trainer = GlueTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        data_collator=data_collator,
+        compute_metrics=lambda eval_pred: compute_metrics(eval_pred, task),
+    )
+    trainer.train()
     # 定义训练参数
     training_args = GlueTrainingArguments(
         state=config.state,
@@ -174,7 +226,7 @@ def main():
         seed=config.seed,
         learning_rate=config.learning_rate,
         lr_scheduler_type="linear",
-        num_train_epochs=config.epoch,
+        num_train_epochs=config.epoch-1,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         warmup_ratio=0.1,
@@ -204,8 +256,6 @@ def main():
         report_to=["tensorboard"],
         remain_loss=remain_loss,
     )
-    model2, _ = get_model_and_tokenizer(model_checkpoint, task, device)
-    model = model2
     for name, param in model.named_parameters():
         param.requires_grad = True
     FroNorm = 0.0
@@ -254,5 +304,5 @@ if __name__ == "__main__":
     main()
     #剪枝标准：
             #模型对样本的损失颗粒的绝对值
-    #从头开始训练,在筛选阶段冻结前馈头
-    # python roberta/traindata12_0_frozen.py --state ft --dataset mrpc --seed 3404 --pruneFlag up --reg 5e-8 --weight_decay 0.0 --epoch 10 --epoch0 1 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --optim adamw_torch
+    #从头开始训练,在筛选阶段冻结前馈头,训练阶段第1epoch只训练前馈头
+    # python roberta/traindata12_0_frozen_1.py --state ft --dataset mrpc --seed 3404 --pruneFlag up --reg 5e-8 --weight_decay 0.0 --epoch 10 --epoch0 1 --remain_loss 1 --model bert-base-uncased --target_ratio 0.5 --batchsize 32 --optim adamw_torch

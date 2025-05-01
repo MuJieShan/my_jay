@@ -39,20 +39,20 @@ def main():
     print("开始预先训练")
     train_dataset = trainset
     data_collator = DataCollatorWithPadding(tokenizer)
-    eval_steps = len(train_epoch_iterator) // 2
+    eval_steps = len(train_epoch_iterator) // 4
     # 定义训练参数
     training_args = GlueTrainingArguments(
         state=config.state,
         # training_args
         seed=config.seed,
         learning_rate=config.learning_rate,
-        lr_scheduler_type="linear",
+        lr_scheduler_type="constant",
         num_train_epochs=config.epoch0,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
-        warmup_ratio=0.1,
-        # warmup_steps=50,
-        weight_decay=config.weight_decay,
+        # warmup_ratio=0.1,
+        warmup_steps=0,
+        weight_decay=0,
         do_train=True,
         reg=config.reg,
         task_name=task,
@@ -68,6 +68,7 @@ def main():
         metric_for_best_model=GLUE_METRIC[task],
         greater_is_better=True,
         save_safetensors=False,
+        save_total_limit=1,
         # logging_args
         output_dir=f"./log/model/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",
         load_best_model_at_end=True,
@@ -146,7 +147,7 @@ def main():
     print("开始训练")
     train_dataset = data_p.get_pruned_train_dataset()
     data_collator = DataCollatorWithPadding(tokenizer)
-    eval_steps = len(train_epoch_iterator)//3
+    eval_steps = len(train_epoch_iterator)//4
     # 定义训练参数
     training_args = GlueTrainingArguments(
         state=config.state,
@@ -166,15 +167,16 @@ def main():
         shuffle=config.shuffle,
         optim=config.optim,
 
-        #eval_args
-        eval_strategy="epoch",
-        # eval_steps=eval_steps,# "steps","epoch"# eval_steps=50,
-        save_strategy="epoch",
-        # save_steps=1e+6,
+        # eval_args
+        eval_strategy="steps",
+        eval_steps=eval_steps,  # "steps","epoch"# eval_steps=50,
+        save_strategy="steps",
+        save_steps=eval_steps,
         save_only_model=True,
         metric_for_best_model=GLUE_METRIC[task],
         greater_is_better=True,
         save_safetensors=False,
+        save_total_limit=1,
         #logging_args
         output_dir=f"./log/model/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",
         logging_dir=f"./log/logs/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}",

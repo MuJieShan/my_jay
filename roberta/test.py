@@ -10,8 +10,13 @@ import torch.optim as optim
 # # # 定义损失函数和优化器
 # # loss_func = nn.CrossEntropyLoss()
 # # optimizer = optim.SGD(model.parameters(), lr=0.001,weight_decay=0.001)
-# linear = nn.Linear(in_features=4,out_features=3)
-# # print(linear.weight, linear.weight.data,linear.bias)
+linear = nn.Linear(in_features=4,out_features=3)
+print(linear.weight)
+noise = torch.randn_like(linear.weight) * 0.001
+print(noise)
+with torch.no_grad():
+    linear.weight.add_(noise)
+print(linear.weight)
 # linear.weight.data = linear.weight.data*3
 # # print(linear.weight, linear.weight.data,linear.bias)
 # LayerNorm = nn.LayerNorm(4)
@@ -27,7 +32,7 @@ sorted_values1 = torch.tensor([dict_data[key]+1 for key in sorted(dict_data.keys
 #
 # 转换为张量
 
-print(torch.sqrt(torch.sum(torch.square(sorted_values - sorted_values1))).item())
+# print(torch.sqrt(torch.sum(torch.square(sorted_values - sorted_values1))).item())
 
 
 

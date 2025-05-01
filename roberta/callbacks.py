@@ -1,3 +1,4 @@
+import random
 from copy import deepcopy
 from functools import partial
 import time
@@ -225,10 +226,41 @@ class WeightNormCallback(TrainerCallback):
         self.tb_writer.add_scalar('Weight Norm', FroNorm, epoch)
         self.tb_writer.flush()
         torch.cuda.empty_cache()
+class DynamicDatasetCallback(TrainerCallback):
+    def __init__(self, train_dataset):
+        super().__init__()
+        self.train_dataset = train_dataset
+    def on_epoch_begin(self, args, state, control,train_dataloader, **kwargs):
+        subset_indices = random.sample(range(len(self.train_dataset)), 100)
+        train_dataset = torch.utils.data.Subset(self.train_dataset, subset_indices)
+        from torch.utils.data.dataloader import DataLoader
+        import datasets
+        from transformers.data.data_collator import DataCollator, DataCollatorWithPadding, default_data_collator
+        from transformers.trainer import Trainer
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+
+        # train_dataset = self.train_dataset
+        data_collator = default_data_collator
+        # if isinstance(train_dataset, datasets.Dataset):
+        #     train_dataset = Trainer._remove_unused_columns(train_dataset, description="training")
+        # else:
+        #     data_collator = Trainer._get_collator_with_removed_columns(data_collator, description="training")
+
+        dataloader_params = {
+            "batch_size": 32,
+            "collate_fn": data_collator,
+            "num_workers": 2,
+            "pin_memory": True,
+        }
+        train_dataloader = DataLoader(train_dataset, **dataloader_params)
 
 def getWeightNormCallback(log_dir='',initmodel=None):
     tb_writer = SummaryWriter(log_dir=log_dir)
     return WeightNormCallback(tb_writer,initmodel)
+
+def getDatasetCallback(train_dataset=None):
+    return DynamicDatasetCallback(train_dataset)
 
 
 
