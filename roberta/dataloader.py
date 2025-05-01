@@ -187,6 +187,7 @@ def get_dataloader1_llama(task:str, model_checkpoint:str,dataloader_drop_last:bo
     actual_task = "mnli" if task == "mnli-mm" else task
     dataset = load_dataset("glue", actual_task)
     train_dataset=dataset['train']
+    # train_dataset = train_dataset.shuffle(seed=3404).select(range(100))
     validation_dataset=dataset[validation_name]
     train_dataset = train_dataset.map(preprocess_function, batched=True)
     validation_dataset = validation_dataset.map(preprocess_function, batched=True)
@@ -203,7 +204,7 @@ def get_dataloader1_llama(task:str, model_checkpoint:str,dataloader_drop_last:bo
     # if 'idx' not in columns_to_return:
     train_dict['idx'] = list(range(len(train_dataset)))
     train_dataset = Dataset.from_dict(train_dict)
-    train_dataset = train_dataset.shuffle(seed=3404).select(range(100))
+
     # if 'roberta' in model_checkpoint:
     #     train_dataset = Dataset.from_dict({'sentence': train_dataset['sentence'],
     #                                        'label': train_dataset['label'],

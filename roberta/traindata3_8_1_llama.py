@@ -222,8 +222,7 @@ def main():
     print(f"Deleted checkpoint file: {training_args.output_dir}")
     data_p = GLUEPruner(dataset=trainset, ratio=config.target_ratio, pruneFlag=config.pruneFlag)
     data_p.prune()
-    del loss_gap_before,loss_gap_after,scores
-    torch.cuda.empty_cache()
+
 
     train_epoch_iterator = train_dataloader
     iterator = iter(train_epoch_iterator)
@@ -257,7 +256,8 @@ def main():
     log.info(s)
     s = f"Negative ratio: {negative_ratio:.5f}"
     log.info(s)
-
+    del loss_gap_before, loss_gap_after, scores,trainer
+    torch.cuda.empty_cache()
     print("开始训练")
     train_dataset = data_p.get_pruned_train_dataset()
     data_collator = DataCollatorWithPadding(tokenizer)
