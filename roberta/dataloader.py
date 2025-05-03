@@ -220,7 +220,7 @@ def get_dataloader1_llama(task:str, model_checkpoint:str,dataloader_drop_last:bo
     train_dataloader = DataLoader(
         train_dataset,
         shuffle=False,
-        batch_size=8,
+        batch_size=batch_size,
         collate_fn=data_collator,
         # drop_last=dataloader_drop_last,
         num_workers=dataloader_num_workers,

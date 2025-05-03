@@ -133,8 +133,9 @@ def main():
     log.info(f'预先训练{s}')
     print("结束预先训练")
     model3, _ = get_model_and_tokenizer(model_checkpoint, task, device)
-    model3.load_state_dict(copy.deepcopy(model.state_dict()))
-    model3.to(next(model.parameters()).device)
+    if remain_loss:
+        model3.load_state_dict(copy.deepcopy(model.state_dict()))
+        model3.to(next(model.parameters()).device)
 
     train_epoch_iterator = train_dataloader
     loss_before = {}
@@ -152,6 +153,7 @@ def main():
         for i in range(len(step_idx)):
             loss_before[step_idx[i].item()] = outputs[i]
         del outputs
+
     with torch.no_grad():
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear):

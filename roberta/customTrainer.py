@@ -219,6 +219,7 @@ class GlueTrainer(Trainer):
             labels = None
         if "idx" in inputs:
             idx = inputs.pop("idx")
+        # inputs["labels"] = inputs["labels"].to('cuda:0')
         outputs = model(**inputs)
         if labels is not None:
             loss = self.compute_loss_func(outputs, labels)
@@ -260,6 +261,7 @@ class GlueTrainer(Trainer):
         if self.args.state == "ft":
             model.train()
             inputs = self._prepare_inputs(inputs)
+
             with self.compute_loss_context_manager():
                 loss = self.compute_loss(model, inputs)
             if self.args.n_gpu > 1:

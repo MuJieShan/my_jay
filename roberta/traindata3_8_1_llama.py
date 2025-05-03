@@ -31,12 +31,12 @@ def main():
     lora1 = "loramodel1"
     #Load model and tokenizer
     model0,tokenizer = get_model_and_tokenizer(model_checkpoint,task,device)
-    model0 = getLoraModel(model0)
-    model0.save_pretrained(lora0)
+    # model0 = getLoraModel(model0)
+    # model0.save_pretrained(lora0)
     model = model0
-    model_params = sum(p.numel()
-                       for p in model.parameters() if p.requires_grad)
-    print(f'可训练参数：{model_params}')
+    # model_params = sum(p.numel()
+    #                    for p in model.parameters() if p.requires_grad)
+    # print(f'可训练参数：{model_params}')
 
     # with torch.no_grad():
     #     for name, module in model.named_modules():
