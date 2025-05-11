@@ -96,6 +96,7 @@ def init_config():
     parser.add_argument('--pruneFlag', type=str, default="up", help='choose one:[up,down]')
     parser.add_argument('--method', type=str, default="el2n", help='choose one:["gradn", "el2n", "loss"]')
     parser.add_argument('--optim', type=str, default="adamw_torch", help='choose one:["adamw_torch", "sgd", "lion_32bit"]')
+    parser.add_argument('--lr_scheduler_type', type=str, default="linear", help='choose one:["lr_scheduler_type", "cosine"]')
     parser.add_argument('--dynamic', type=str, default="False")
     args = parser.parse_args()
     base_config = {'dataset': "mrpc",'model': "bert-base-uncased",'state': "ft",
@@ -286,7 +287,72 @@ def get_pooler_output(model, inputs):
     # x = dropout(x)
     # x = out_proj(x)
     # print(x)
+def get_pooler_output_and_losses(model, inputs):
+    from transformers import BertForSequenceClassification, RobertaForSequenceClassification,GPT2ForSequenceClassification,T5ForSequenceClassification,LlamaForSequenceClassification
+    from peft.peft_model import PeftModelForSequenceClassification
+    if "labels" in inputs:
+        labels = inputs.pop("labels")
+    if "idx" in inputs:
+        idx = inputs.pop("idx")
+    outputs = model(**inputs, output_hidden_states=True)
+    dropout=None
+    dense=None
+    tanh=None
+    out_proj=None
+    pooler_output=None
+    # bert
+    if isinstance(model, BertForSequenceClassification):
+        dropout = model.dropout
+        dense = model.bert.pooler.dense
+        tanh = torch.tanh
+        out_proj = model.classifier
 
+        x = outputs.hidden_states[-1][:, 0, :]
+        x = dropout(x)
+        x = dense(x)
+        pooler_output = tanh(x)
+    # roberta
+    elif isinstance(model, RobertaForSequenceClassification):
+        dropout = model.classifier.dropout
+        dense = model.classifier.dense
+        tanh = torch.tanh
+        out_proj = model.classifier.out_proj
+
+        x = outputs.hidden_states[-1][:, 0, :]
+        x = dropout(x)
+        x = dense(x)
+        pooler_output = tanh(x)
+    #T5
+    elif isinstance(model, T5ForSequenceClassification):
+        dropout = model.classification_head.dropout
+        dense = model.classification_head.dense
+        tanh = torch.tanh
+        out_proj = model.classification_head.out_proj
+        x = outputs.decoder_hidden_states[-1][:, -1, :]
+        x = dropout(x)
+        x = dense(x)
+        pooler_output = tanh(x)
+    # gpt2 or llama
+    elif isinstance(model, (GPT2ForSequenceClassification, LlamaForSequenceClassification,PeftModelForSequenceClassification)):
+        input_ids = inputs["input_ids"]
+        sequence_lengths = torch.eq(input_ids, model.config.pad_token_id).int().argmax(-1) - 1
+        sequence_lengths = sequence_lengths % input_ids.shape[-1]
+        sequence_lengths = sequence_lengths
+        score = model.score
+        pooler_output = outputs.hidden_states[-1][torch.arange(input_ids.shape[-2]), sequence_lengths].to(model.score.weight.device)  # gpt2的分类头的输入
+
+        # x = score(x)
+        # print(x)
+    else:
+        print(type(model))
+    logits = outputs['logits']
+    logsoftmax_func = nn.LogSoftmax(dim=-1)
+    logsoftmax_output = logsoftmax_func(logits)
+    losses = -logsoftmax_output[np.arange(logits.size(-2)), labels]
+    return pooler_output.flatten(),losses
+    # x = dropout(x)
+    # x = out_proj(x)
+    # print(x)
 def statistics_loss1(config, model, train_epoch_iterator, device):
     """
     取分类头上一层的输出，过滤掉分类头对损失颗粒的影响，
@@ -326,6 +392,7 @@ def statistics_loss1(config, model, train_epoch_iterator, device):
     df = pd.DataFrame(loss_gap)
     df.to_csv(loss_gap_file, index=False)
     print(sum(loss_gap))
+
 
 def statistics_loss2(config, model, train_epoch_iterator, device):
     """

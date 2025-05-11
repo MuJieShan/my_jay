@@ -50,6 +50,7 @@ class GlueTrainingArguments(TrainingArguments):
         self.dynamic = dynamic
         self.model_name = model_name
 
+
 class GlueTrainer(Trainer):
     def __init__(self, compute_loss_func = None,pruner = None,*args, **kwargs):
         super().__init__(*args, **kwargs)
