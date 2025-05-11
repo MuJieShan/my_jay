@@ -35,7 +35,7 @@ def main():
     model2.to(next(model.parameters()).device)
     # Load DataLoader
     print(f"\nLoading data...")
-    train_dataloader, eval_dataset, trainset = get_dataloader1(task, model_checkpoint, tokenizer=tokenizer,shuffle=config.shuffle,batch_size=batch_size)
+    train_dataloader, eval_dataset, trainset = get_dataloader1(task, model_checkpoint, tokenizer=tokenizer,shuffle=False,batch_size=batch_size)
     # data pruning
     compress = config.reg
     train_epoch_iterator =  train_dataloader
@@ -149,7 +149,8 @@ def main():
         inputs = prepare_inputs(next(iterator), device)
         model.eval()
         step_idx = inputs["idx"]
-        outputs,losses = get_pooler_output_and_losses(model, inputs)
+        with torch.no_grad():
+            outputs,losses = get_pooler_output_and_losses(model, inputs)
         outputs = outputs.reshape(-1, 768)
         assert len(step_idx) == outputs.shape[0], "The length of step_idx must match the number of rows in outputs"
         outputs = outputs.data.cpu()
@@ -171,7 +172,8 @@ def main():
         inputs = prepare_inputs(next(iterator), device)
         model.eval()
         step_idx = inputs["idx"]
-        outputs,losses = get_pooler_output_and_losses(model, inputs)
+        with torch.no_grad():
+            outputs,losses = get_pooler_output_and_losses(model, inputs)
         outputs = outputs.reshape(-1, 768)
         assert len(step_idx) == outputs.shape[0], "The length of step_idx must match the number of rows in outputs"
         outputs = outputs.data.cpu()
@@ -179,8 +181,9 @@ def main():
             loss_after[step_idx[i].item()] = outputs[i]
             losses_after[step_idx[i].item()] = losses[i]
         del outputs
+    after.close()
     loss_gap_after = {key: torch.sqrt(torch.sum(torch.square(loss_after[key] - loss_before[key]))).item() for key in loss_after if key in loss_before}
-    losses_gap = {key: torch.abs(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
+    losses_gap = {key: torch.abs(losses_after[key] - losses_before[key]).item() for key in losses_after if key in losses_before}
     # loss_gap_after = {key: torch.var(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
     # loss_gap_after = {key: torch.max(torch.abs(loss_after[key] - loss_before[key])).item() for key in loss_after if key in loss_before}
     scores={key: abs(loss_gap_after[key]-loss_gap_before[key])*loss_gap_after[key]/loss_gap_before[key] for key in loss_gap_after if key in loss_gap_before}
