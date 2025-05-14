@@ -1,3 +1,5 @@
+import math
+
 import matplotlib
 import matplotlib.pyplot as plt
 import re
@@ -10,7 +12,7 @@ import seaborn as sns
 from tqdm import tqdm
 import matplotlib.ticker as mticker
 from matplotlib.ticker import MultipleLocator
-
+import math
 # matplotlib.rcParams['font.family'] = ['Times New Roman']
 # matplotlib.rcParams['font.sans-serif'] = ['SimHei']
 # 确保正常显示负号
@@ -1696,18 +1698,54 @@ def show_pt_lp(file):
     scores = list(data_dict.values())
     scores1 = np.array(list(data_dict.values()))
     zero_count = np.sum(scores1 == 0)
+    mean = np.mean(scores1)
+    median=np.median(scores1)
     print(f"分数为 0 的样本数量: {zero_count}")
-    print(f"共加载 {len(ids)} 个样本")
-    print(f"示例数据：ID={ids[0]}, Score={scores[0]}")
-    plt.figure(figsize=(10, 6))
-    plt.scatter(ids, scores, alpha=0.6, edgecolors='w', linewidth=0.5)
+    print(f"均值: {mean}")
+    print(f"中位数: {median}")
+    # print(f"共加载 {len(ids)} 个样本")
+    # print(f"示例数据：ID={ids[0]}, Score={scores[0]}")
+    # plt.figure(figsize=(10, 6))
+    # plt.scatter(ids, scores, alpha=0.6, edgecolors='w', linewidth=0.5)
+    #
+    # plt.title('Sample Importance Scores Distribution', fontsize=14)
+    # plt.xlabel('Sample ID', fontsize=12)
+    # plt.ylabel('Importance Score', fontsize=12)
+    # plt.grid(True, alpha=0.3)
+    #
+    # plt.tight_layout()
+    # plt.show()
+def show_pt_lp1(file,file1):
+    data_dict = torch.load(file)  # 替换为你的文件路径
 
-    plt.title('Sample Importance Scores Distribution', fontsize=14)
-    plt.xlabel('Sample ID', fontsize=12)
-    plt.ylabel('Importance Score', fontsize=12)
-    plt.grid(True, alpha=0.3)
+    # 转换为Python字典（如果尚未是字典格式）
+    if isinstance(data_dict, torch.Tensor):
+        data_dict = data_dict.numpy().item()  # 处理单元素张量情况
+    elif isinstance(data_dict, torch.Tensor):
+        data_dict = data_dict.tolist()  # 处理张量转字典
 
-    plt.tight_layout()
+    data_dict1 = torch.load(file1)  # 替换为你的文件路径
+    # 转换为Python字典（如果尚未是字典格式）
+    if isinstance(data_dict1, torch.Tensor):
+        data_dict1 = data_dict1.numpy().item()  # 处理单元素张量情况
+    elif isinstance(data_dict1, torch.Tensor):
+        data_dict1 = data_dict1.tolist()  # 处理张量转字典
+    # 提取ID和分数
+    sorted_keys = sorted(data_dict, key=data_dict.get)  # 按dict1的值排序，返回排序后的键列表
+
+    values_dict1 = [0.001*data_dict[key] for key in sorted_keys]  # 按排序后的键顺序提取dict1的值
+    values_dict2 = [data_dict1[key] for key in sorted_keys]  # 按排序后的键顺序提取dict2的值
+    x=range(len(sorted_keys))
+    # 第三步：绘制散点图
+    plt.figure(figsize=(8, 6))
+    plt.scatter(x, values_dict2, color='red', label='Comparison',s=3)
+    plt.scatter(x, values_dict1, color='blue', label='Comparison',s=3)
+
+    plt.xlabel('Values from dict1')
+    plt.ylabel('Values from dict2')
+    plt.title('Scatter Plot Comparing Values from Two Dictionaries')
+    plt.legend()
+    plt.grid(True)
     plt.show()
 if __name__ == '__main__':
     #1-2
@@ -1771,4 +1809,18 @@ if __name__ == '__main__':
     # show_loss_gaps_2(file3)
     loss = "32/pooler_gap_1_mrpc_5e-07_3404.csv"
     # show_loss_gap_(loss)
-    show_pt_lp("颗粒/sst2_3404_up_0.5_0.0_5e-07_2_loss_gap.pt")
+    t='qqp'
+    n='5e-08'
+    n1='5e-07'
+    a='_a'
+    # pt = f"score_lp/{t}_3404_up_0.5_0.0_{n}_losses_gap{a}.pt"
+    # show_pt_lp(pt)
+    # pt = f"score_lp/{t}_3404_up_0.5_0.0_{n}_pooler_gap{a}.pt"
+    # show_pt_lp(pt)
+    # pt = f"score_lp/{t}_3404_up_0.5_0.0_{n1}_losses_gap{a}.pt"
+    # show_pt_lp(pt)
+    # pt = f"score_lp/{t}_3404_up_0.5_0.0_{n1}_pooler_gap{a}.pt"
+    # show_pt_lp(pt)
+    pt = f"score_lp/{t}_3404_up_0.5_0.0_{n}_pooler_gap{a}.pt"
+    pt1 = f"score_lp/{t}_3404_up_0.5_0.0_{n}_losses_gap{a}.pt"
+    show_pt_lp1(pt,pt1)
