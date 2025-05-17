@@ -1823,4 +1823,4 @@ if __name__ == '__main__':
     # show_pt_lp(pt)
     pt = f"score_lp/{t}_3404_up_0.5_0.0_{n}_pooler_gap{a}.pt"
     pt1 = f"score_lp/{t}_3404_up_0.5_0.0_{n}_losses_gap{a}.pt"
-    show_pt_lp1(pt,pt1)
+    # show_pt_lp1(pt,pt1)

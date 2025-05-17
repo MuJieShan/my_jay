@@ -14,7 +14,7 @@ def main():
     start_time = time.time()
     config = init_config()
     log=init_log()
-    s = "less"
+    s = "gradn"
     log.info(s)
     log.info(config)
     seed_torch(config.seed)
@@ -34,9 +34,8 @@ def main():
     print(f"\nLoading data...")
     train_dataloader, eval_dataset, trainset = get_dataloader1(task, model_checkpoint, tokenizer=tokenizer,shuffle=False,batch_size=batch_size)
     compress = config.reg
-    losses_file = f"/clzs_test003/my_jay/roberta/score/less/less-{task}.pt"
-    losses_gap = torch.load(losses_file)
-    scores = {k: v for k,v in enumerate(losses_gap)}
+    losses_file = f"/clzs_test006/my_jay/roberta/score/gradn/gradn-{task}.pt"
+    scores = torch.load(losses_file)
     data_p = GLUEPruner(dataset=trainset, ratio=config.target_ratio, pruneFlag=config.pruneFlag)
     data_p.prune()
     train_epoch_iterator = train_dataloader
@@ -125,6 +124,6 @@ def main():
 if __name__ == "__main__":
     main()
     # 剪枝标准：
-    #     less
+    #     gradn
 
-    # python roberta/less.py --state ft --dataset sst2 --seed 42 --reg 5e-8 --weight_decay 0.002 --epoch0 1 --epoch 10 --remain_loss 1 --model roberta-base --target_ratio 0.5 --pruneFlag up --optim adamw_torch --learning_rate 2e-5 --batchsize 32
+    # python roberta/gradn.py --state ft --dataset sst2 --seed 42 --reg 5e-8 --weight_decay 0.002 --epoch0 1 --epoch 10 --remain_loss 1 --model roberta-base --target_ratio 0.5 --pruneFlag up --optim adamw_torch --learning_rate 2e-5 --batchsize 32

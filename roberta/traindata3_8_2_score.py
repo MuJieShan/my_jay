@@ -137,8 +137,8 @@ def main():
         model3.to(next(model.parameters()).device)
 
     train_epoch_iterator = train_dataloader
-    loss_before = {}
-    loss_after = {}
+    loss_before1 = {}
+    loss_after1 = {}
     iterator = iter(train_epoch_iterator)
     trange = range(len(train_epoch_iterator))
     for step in trange:
@@ -150,7 +150,7 @@ def main():
         assert len(step_idx) == outputs.shape[0], "The length of step_idx must match the number of rows in outputs"
         outputs = outputs.data.cpu()
         for i in range(len(step_idx)):
-            loss_before[step_idx[i].item()] = outputs[i]
+            loss_before1[step_idx[i].item()] = outputs[i]
         del outputs
 
     with torch.no_grad():
@@ -169,17 +169,38 @@ def main():
         assert len(step_idx) == outputs.shape[0], "The length of step_idx must match the number of rows in outputs"
         outputs = outputs.data.cpu()
         for i in range(len(step_idx)):
-            loss_after[step_idx[i].item()] = outputs[i]
+            loss_after1[step_idx[i].item()] = outputs[i]
         del outputs
-    loss_gap_after = {key: torch.sqrt(torch.sum(torch.square(loss_after[key] - loss_before[key]))).item() for key in loss_after if key in loss_before}
+    loss_gap_after = {key: torch.sqrt(torch.sum(torch.square(loss_after1[key] - loss_before1[key]))).item() for key in loss_after1 if key in loss_before1}
     # loss_gap_after = {key: torch.var(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
     # loss_gap_after = {key: torch.max(torch.abs(loss_after[key] - loss_before[key])).item() for key in loss_after if key in loss_before}
     scores={key: abs(loss_gap_after[key]-loss_gap_before[key])*loss_gap_after[key]/loss_gap_before[key] for key in loss_gap_after if key in loss_gap_before}
+    sorted_items = sorted(scores.items(), key=lambda x: x[1])
+    min_keys = [item[0] for item in sorted_items[:10]]
+    max_keys = [item[0] for item in sorted_items[-10:]]
     output_dir = f"./log/score"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     pooler_file = f"{output_dir}/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}_score.pt"
     torch.save(scores, pooler_file)
+
+    pooler_before_max = {key: loss_after[key] - loss_before[key] for key in max_keys}
+    pooler_before_min = {key: loss_after[key] - loss_before[key] for key in min_keys}
+    pooler_after_max = {key: loss_after1[key] - loss_before1[key] for key in max_keys}
+    pooler_after_min = {key: loss_after1[key] - loss_before1[key] for key in min_keys}
+
+    pooler_before_max_file = f"{output_dir}/pooler_before_max_{config.dataset}_{config.reg}.pt"
+    torch.save(pooler_before_max, pooler_before_max_file)
+
+    pooler_before_min_file = f"{output_dir}/pooler_before_min_{config.dataset}_{config.reg}.pt"
+    torch.save(pooler_before_min, pooler_before_min_file)
+
+    pooler_after_max_file = f"{output_dir}/pooler_after_max_{config.dataset}_{config.reg}.pt"
+    torch.save(pooler_after_max, pooler_after_max_file)
+
+    pooler_after_min_file = f"{output_dir}/pooler_after_min_{config.dataset}_{config.reg}.pt"
+    torch.save(pooler_after_min, pooler_after_min_file)
+
 
     import shutil
     shutil.rmtree(training_args.output_dir)
