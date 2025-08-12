@@ -80,6 +80,7 @@ def main():
         del outputs
     after.close()
     loss_gap_before = {key: torch.sqrt(torch.sum(torch.square(loss_after[key] - loss_before[key]))).item() for key in loss_after if key in loss_before}
+    loss_gap_before_var = {key: torch.var(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
     # loss_gap_before = {key: torch.var(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
     # loss_gap_before = {key: torch.max(torch.abs(loss_after[key] - loss_before[key])).item() for key in loss_after if key in loss_before}
         # loss_gap = {key: torch.var(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
@@ -183,6 +184,7 @@ def main():
         del outputs
     after.close()
     loss_gap_after = {key: torch.sqrt(torch.sum(torch.square(loss_after1[key] - loss_before1[key]))).item() for key in loss_after1 if key in loss_before1}
+    loss_gap_after_var = {key: torch.var(loss_after1[key] - loss_before1[key]).item() for key in loss_after1 if key in loss_before1}
     # loss_gap_after = {key: torch.var(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
     # loss_gap_after = {key: torch.max(torch.abs(loss_after[key] - loss_before[key])).item() for key in loss_after if key in loss_before}
     scores={key: abs(loss_gap_after[key]-loss_gap_before[key])*loss_gap_after[key]/loss_gap_before[key] for key in loss_gap_after if key in loss_gap_before}
@@ -198,6 +200,10 @@ def main():
     torch.save(loss_gap_before, pooler_file_before)
     pooler_file_after = f"{output_dir}/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}_score_after.pt"
     torch.save(loss_gap_after, pooler_file_after)
+    pooler_file_before_var = f"{output_dir}/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}_var_before.pt"
+    torch.save(loss_gap_before_var, pooler_file_before_var)
+    pooler_file_after_var = f"{output_dir}/{config.dataset}_{config.seed}_{config.pruneFlag}_{config.target_ratio}_{config.weight_decay}_{config.reg}_var_after.pt"
+    torch.save(loss_gap_after_var, pooler_file_after_var)
 
 
 
