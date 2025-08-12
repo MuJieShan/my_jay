@@ -44,7 +44,9 @@ def main():
     loss_after = {}
     iterator = iter(train_epoch_iterator)
     trange = range(len(train_epoch_iterator))
+    before = tqdm(total=len(train_epoch_iterator), desc=f"lp before")
     for step in trange:
+        before.update(1)
         inputs = prepare_inputs(next(iterator), device)
         model.eval()
         step_idx = inputs["idx"]
@@ -55,6 +57,7 @@ def main():
         for i in range(len(step_idx)):
             loss_before[step_idx[i].item()] = outputs[i]
         del outputs
+    before.close()
     with torch.no_grad():
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear):
@@ -62,7 +65,9 @@ def main():
                 module.weight.data = r * module.weight.data
     iterator = iter(train_epoch_iterator)
     trange = range(len(train_epoch_iterator))
+    after = tqdm(total=len(train_epoch_iterator), desc=f"lp after")
     for step in trange:
+        after.update(1)
         inputs = prepare_inputs(next(iterator), device)
         model.eval()
         step_idx = inputs["idx"]
@@ -73,6 +78,7 @@ def main():
         for i in range(len(step_idx)):
             loss_after[step_idx[i].item()] = outputs[i]
         del outputs
+    after.close()
     loss_gap_before = {key: torch.sqrt(torch.sum(torch.square(loss_after[key] - loss_before[key]))).item() for key in loss_after if key in loss_before}
     # loss_gap_before = {key: torch.var(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
     # loss_gap_before = {key: torch.max(torch.abs(loss_after[key] - loss_before[key])).item() for key in loss_after if key in loss_before}
@@ -141,7 +147,9 @@ def main():
     loss_after1 = {}
     iterator = iter(train_epoch_iterator)
     trange = range(len(train_epoch_iterator))
+    before = tqdm(total=len(train_epoch_iterator), desc=f"lp before")
     for step in trange:
+        before.update(1)
         inputs = prepare_inputs(next(iterator), device)
         model.eval()
         step_idx = inputs["idx"]
@@ -152,7 +160,7 @@ def main():
         for i in range(len(step_idx)):
             loss_before1[step_idx[i].item()] = outputs[i]
         del outputs
-
+    before.close()
     with torch.no_grad():
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear):
@@ -160,7 +168,9 @@ def main():
                 module.weight.data = r * module.weight.data
     iterator = iter(train_epoch_iterator)
     trange = range(len(train_epoch_iterator))
+    after = tqdm(total=len(train_epoch_iterator), desc=f"lp after")
     for step in trange:
+        after.update(1)
         inputs = prepare_inputs(next(iterator), device)
         model.eval()
         step_idx = inputs["idx"]
@@ -171,6 +181,7 @@ def main():
         for i in range(len(step_idx)):
             loss_after1[step_idx[i].item()] = outputs[i]
         del outputs
+    after.close()
     loss_gap_after = {key: torch.sqrt(torch.sum(torch.square(loss_after1[key] - loss_before1[key]))).item() for key in loss_after1 if key in loss_before1}
     # loss_gap_after = {key: torch.var(loss_after[key] - loss_before[key]).item() for key in loss_after if key in loss_before}
     # loss_gap_after = {key: torch.max(torch.abs(loss_after[key] - loss_before[key])).item() for key in loss_after if key in loss_before}
