@@ -208,6 +208,7 @@ def main():
     total_time = end_time - start_time
     s = f'Total score {config.dataset} time: {total_time}'
     log.info(s)
+
 if __name__ == "__main__":
     main()
     # 剪枝标准：
