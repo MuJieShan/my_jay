@@ -222,4 +222,4 @@ if __name__ == "__main__":
         # |s2-s1|*s2/s1
     # 测试集样本在微调前后的颗粒状况
     #先统计每个样本微调前后的散度（得分)
-    # python roberta/traindata3_8_2.py --state ft --dataset sst2 --seed 3404 --reg 5e-8 --weight_decay 0.002 --epoch0 1 --epoch 10 --remain_loss 1 --model roberta-base --target_ratio 0.5 --pruneFlag up --optim adamw_torch --learning_rate 2e-5 --batchsize 32
+    # python roberta/traindata3_8_2_score12.py --state ft --dataset sst2 --seed 3404 --reg 5e-7 --weight_decay 0.002 --epoch0 1 --epoch 10 --remain_loss 1 --model roberta-base --target_ratio 0.5 --pruneFlag up --optim adamw_torch --learning_rate 2e-5 --batchsize 32
